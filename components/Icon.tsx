@@ -1,9 +1,6 @@
-import {
-	SymbolView,
-	type AndroidSymbol,
-	type SFSymbol,
-} from "expo-symbols";
 import type { StyleProp, ViewStyle } from "react-native";
+import { duoColors, type DuoTone } from "../constants/theme";
+import { DuoIcon, type DuoIconName } from "./icons/DuoIcon";
 
 export type IconName =
 	| "brand"
@@ -35,61 +32,95 @@ export type IconName =
 	| "doc"
 	| "arrowRight";
 
-const glyphs: Record<
-	IconName,
-	{ ios: SFSymbol; android: AndroidSymbol; web: AndroidSymbol }
-> = {
-	brand: {
-		ios: "bubble.left.and.bubble.right.fill",
-		android: "forum",
-		web: "forum",
-	},
-	notification: { ios: "bell", android: "notifications", web: "notifications" },
-	mic: { ios: "mic.fill", android: "mic", web: "mic" },
-	history: { ios: "clock.arrow.circlepath", android: "history", web: "history" },
-	chart: { ios: "chart.bar.fill", android: "bar_chart", web: "bar_chart" },
-	book: { ios: "book.fill", android: "menu_book", web: "menu_book" },
-	progress: {
-		ios: "chart.line.uptrend.xyaxis",
-		android: "monitoring",
-		web: "monitoring",
-	},
-	chevron: { ios: "chevron.right", android: "chevron_right", web: "chevron_right" },
-	home: { ios: "house.fill", android: "home", web: "home" },
-	session: { ios: "bubble.left.fill", android: "chat_bubble", web: "chat_bubble" },
-	profile: { ios: "person.fill", android: "person", web: "person" },
-	eye: { ios: "eye", android: "visibility", web: "visibility" },
-	eyeOff: { ios: "eye.slash", android: "visibility_off", web: "visibility_off" },
-	logout: {
-		ios: "rectangle.portrait.and.arrow.right",
-		android: "logout",
-		web: "logout",
-	},
-	check: { ios: "checkmark", android: "check", web: "check" },
-	trash: { ios: "trash", android: "delete", web: "delete" },
-	heart: { ios: "heart.fill", android: "favorite", web: "favorite" },
-	lock: { ios: "lock.fill", android: "lock", web: "lock" },
-	clock: { ios: "clock", android: "schedule", web: "schedule" },
-	calendar: { ios: "calendar", android: "event", web: "event" },
-	sparkles: { ios: "sparkles", android: "auto_awesome", web: "auto_awesome" },
-	smile: { ios: "face.smiling", android: "mood", web: "mood" },
-	moon: { ios: "moon.fill", android: "dark_mode", web: "dark_mode" },
-	star: { ios: "star.fill", android: "star", web: "star" },
-	waveform: { ios: "waveform", android: "graphic_eq", web: "graphic_eq" },
-	info: { ios: "info.circle.fill", android: "info", web: "info" },
-	doc: { ios: "doc.text.fill", android: "description", web: "description" },
-	arrowRight: { ios: "arrow.right", android: "arrow_forward", web: "arrow_forward" },
+const GLYPH: Record<IconName, DuoIconName> = {
+	brand: "chat-circle",
+	notification: "bell",
+	mic: "microphone",
+	history: "clock-counter-clockwise",
+	chart: "chart-bar",
+	book: "book-open",
+	progress: "chart-line-up",
+	chevron: "caret-right",
+	home: "house",
+	session: "chat-circle",
+	profile: "user",
+	eye: "eye",
+	eyeOff: "eye-slash",
+	logout: "sign-out",
+	check: "check",
+	trash: "trash",
+	heart: "heart",
+	lock: "lock",
+	clock: "clock",
+	calendar: "calendar",
+	sparkles: "sparkle",
+	smile: "smiley",
+	moon: "moon",
+	star: "star",
+	waveform: "waveform",
+	info: "info",
+	doc: "file-text",
+	arrowRight: "arrow-right",
+};
+
+const TONE: Record<IconName, DuoTone> = {
+	brand: "primary",
+	notification: "history",
+	mic: "primary",
+	history: "history",
+	chart: "chart",
+	book: "info",
+	progress: "chart",
+	chevron: "neutral",
+	home: "primary",
+	session: "primary",
+	profile: "primary",
+	eye: "neutral",
+	eyeOff: "neutral",
+	logout: "neutral",
+	check: "primary",
+	trash: "neutral",
+	heart: "primary",
+	lock: "neutral",
+	clock: "history",
+	calendar: "history",
+	sparkles: "info",
+	smile: "info",
+	moon: "history",
+	star: "info",
+	waveform: "primary",
+	info: "info",
+	doc: "info",
+	arrowRight: "primary",
 };
 
 type IconProps = {
 	name: IconName;
 	size?: number;
 	color?: string;
+	tint?: string;
+	tone?: DuoTone;
 	style?: StyleProp<ViewStyle>;
 };
 
-export function Icon({ name, size = 22, color, style }: IconProps) {
+export function Icon({
+	name,
+	size = 22,
+	color,
+	tint,
+	tone,
+	style,
+}: IconProps) {
+	const category = duoColors[tone ?? TONE[name]];
+	const lineColor = color ?? category.line;
+	const tintColor = tint ?? category.tint;
 	return (
-		<SymbolView name={glyphs[name]} size={size} tintColor={color} style={style} />
+		<DuoIcon
+			name={GLYPH[name]}
+			size={size}
+			line={lineColor}
+			tint={tintColor}
+			style={style}
+		/>
 	);
 }

@@ -6,7 +6,6 @@ import { PrimaryButton } from "../../components/PrimaryButton";
 import { TextField } from "../../components/TextField";
 import { colors, radii } from "../../constants/theme";
 import { useAuth } from "../../lib/auth";
-import { useFocusGuard } from "../../lib/focusGuard";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -19,7 +18,6 @@ type FieldErrors = {
 
 export default function RegisterScreen() {
 	const { register } = useAuth();
-	const guard = useFocusGuard<"name" | "email" | "password">();
 	const [name, setName] = useState("");
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
@@ -42,20 +40,30 @@ export default function RegisterScreen() {
 
 		const next: FieldErrors = {};
 
-		if (!name.trim()) {
+		const cleanName = name.trim();
+
+		if (!cleanName) {
 			next.name = "Nama lengkap wajib diisi.";
+		} else if (cleanName.length < 3) {
+			next.name = "Nama lengkap minimal 3 karakter.";
+		} else if (cleanName.length > 50) {
+			next.name = "Nama lengkap maksimal 50 karakter.";
 		}
 
 		if (!email.trim()) {
 			next.email = "Email wajib diisi.";
 		} else if (!EMAIL_PATTERN.test(email.trim())) {
 			next.email = "Format email tidak valid.";
+		} else if (email.trim().length > 100) {
+			next.email = "Email maksimal 100 karakter.";
 		}
 
 		if (!password) {
 			next.password = "Password wajib diisi.";
-		} else if (password.length < 6) {
-			next.password = "Password minimal 6 karakter.";
+		} else if (password.length < 8) {
+			next.password = "Password minimal 8 karakter.";
+		} else if (password.length > 72) {
+			next.password = "Password maksimal 72 karakter.";
 		}
 
 		setErrors(next);
@@ -79,9 +87,6 @@ export default function RegisterScreen() {
 			subtitle="Buat akun pendamping untuk mulai mendampingi."
 		>
 			<TextField
-				ref={guard.setRef("name")}
-				onFocus={guard.onFocus("name")}
-				onPressIn={guard.onPressIn("name")}
 				label="Nama lengkap pendamping"
 				value={name}
 				onChangeText={update("name", setName)}
@@ -94,9 +99,6 @@ export default function RegisterScreen() {
 				error={errors.name}
 			/>
 			<TextField
-				ref={guard.setRef("email")}
-				onFocus={guard.onFocus("email")}
-				onPressIn={guard.onPressIn("email")}
 				label="Email"
 				value={email}
 				onChangeText={update("email", setEmail)}
@@ -111,13 +113,10 @@ export default function RegisterScreen() {
 				error={errors.email}
 			/>
 			<TextField
-				ref={guard.setRef("password")}
-				onFocus={guard.onFocus("password")}
-				onPressIn={guard.onPressIn("password")}
 				label="Password"
 				value={password}
 				onChangeText={update("password", setPassword)}
-				placeholder="Minimal 6 karakter"
+				placeholder="Minimal 8 karakter"
 				secure
 				autoCapitalize="none"
 				autoComplete="off"

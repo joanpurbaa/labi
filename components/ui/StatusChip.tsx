@@ -1,6 +1,7 @@
-import { StyleSheet, Text, View } from "react-native";
-import { statusColors, type, type StatusTone } from "../../constants/theme";
+import { StyleSheet, View } from "react-native";
+import { statusColors, type StatusTone } from "../../constants/theme";
 import { Icon, type IconName } from "../Icon";
+import { AppText } from "./AppText";
 
 const DEFAULT_ICON: Record<StatusTone, IconName> = {
 	stable: "check",
@@ -19,9 +20,9 @@ export function StatusChip({ tone, label, icon }: StatusChipProps) {
 	return (
 		<View style={[styles.chip, { backgroundColor: palette.bg }]}>
 			<Icon name={icon ?? DEFAULT_ICON[tone]} size={16} color={palette.fg} />
-			<Text style={[type.small, styles.text, { color: palette.fg }]}>
-				{label}
-			</Text>
+<AppText variant="caption" style={[styles.text, { color: palette.fg }]}>
+			{label}
+		</AppText>
 		</View>
 	);
 }

@@ -1,102 +1,144 @@
 import { router, type Href } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import Animated, {
+	useAnimatedStyle,
+	useReducedMotion,
+	useSharedValue,
+	withSpring,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Icon, type IconName } from "../../components/Icon";
+import { AppText } from "../../components/ui/AppText";
+import { Icon } from "../../components/Icon";
+import { Icon3D, type Icon3DName } from "../../components/icons/Icon3D";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { FadeIn } from "../../components/ui/FadeIn";
-import { IconBadge, type BadgeTone } from "../../components/ui/IconBadge";
 import { Illustration } from "../../components/ui/Illustration";
 import { PageHeader } from "../../components/ui/PageHeader";
+import { Photo } from "../../components/photo/Photo";
+import { Mascot } from "../../components/mascot/Mascot";
 import { ProgressRing } from "../../components/ui/ProgressRing";
 import {
 	colors,
 	layout,
-	radii,
-	shadows,
 	spacing,
 	type,
 } from "../../constants/theme";
 import { useAuth } from "../../lib/auth";
+import { WEEKLY_PROGRESS, WEEKLY_SUMMARY } from "../../lib/dummyData";
+import { formatName } from "../../lib/formatName";
 import { getGreeting } from "../../lib/greeting";
+import { mascotForHome } from "../../lib/mascotMood";
 
 type QuickAction = {
 	key: string;
 	label: string;
-	icon: IconName;
-	tone: BadgeTone;
-	route?: Href;
-	message?: string;
+	threeD: Icon3DName;
+	tile: string;
+	route: Href;
 };
 
 const QUICK_ACTIONS: QuickAction[] = [
 	{
 		key: "start",
 		label: "Mulai sesi",
-		icon: "mic",
-		tone: "primary",
+		threeD: "studio-microphone",
+		tile: colors.primarySoft,
 		route: "/sesi-bercerita",
 	},
 	{
 		key: "history",
 		label: "Riwayat",
-		icon: "history",
-		tone: "accent",
+		threeD: "spiral-calendar",
+		tile: colors.orangeSoft,
 		route: "/riwayat",
 	},
 	{
 		key: "progress",
 		label: "Perkembangan",
-		icon: "chart",
-		tone: "mint",
+		threeD: "bar-chart",
+		tile: colors.marigoldSoft,
 		route: "/perkembangan",
 	},
 	{
 		key: "guide",
 		label: "Panduan",
-		icon: "book",
-		tone: "warm",
-		message: "Panduan penggunaan segera hadir.",
+		threeD: "open-book",
+		tile: colors.leafSoft,
+		route: "/panduan",
 	},
 ];
 
+function QuickTile({
+	action,
+	onPress,
+}: {
+	action: QuickAction;
+	onPress: () => void;
+}) {
+	const reduceMotion = useReducedMotion();
+	const press = useSharedValue(0);
+
+	const tileStyle = useAnimatedStyle(() => ({
+		transform: [
+			{ translateY: -2 * press.value },
+			{ rotate: `${3 * press.value}deg` },
+		],
+	}));
+
+	const pressIn = () => {
+		if (!reduceMotion) {
+			press.value = withSpring(1, { damping: 12, stiffness: 320 });
+		}
+	};
+	const pressOut = () => {
+		if (!reduceMotion) {
+			press.value = withSpring(0, { damping: 12, stiffness: 320 });
+		}
+	};
+
+	return (
+		<Pressable
+			accessibilityRole="button"
+			accessibilityLabel={action.label}
+			onPress={onPress}
+			onPressIn={pressIn}
+			onPressOut={pressOut}
+			style={({ pressed }) => [styles.quickItem, pressed && styles.pressed]}
+		>
+			<Animated.View
+				style={[
+					styles.quickTile,
+					{ backgroundColor: action.tile },
+					tileStyle,
+				]}
+			>
+				<Icon3D name={action.threeD} size={56} />
+			</Animated.View>
+			<AppText
+				style={[styles.quickLabel]}
+				numberOfLines={1}
+				adjustsFontSizeToFit
+				minimumFontScale={0.85}
+			>
+				{action.label}
+			</AppText>
+		</Pressable>
+	);
+}
+
 export default function HomeScreen() {
 	const { user, survivorProfile } = useAuth();
-	const [notice, setNotice] = useState<string | null>(null);
-	const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	const survivorName = survivorProfile?.survivorNickname ?? "orang yang kamu dampingi";
-	const companionName = user?.name ?? "Pendamping";
-
-	const showNotice = useCallback((message: string) => {
-		setNotice(message);
-		if (noticeTimer.current) {
-			clearTimeout(noticeTimer.current);
-		}
-		noticeTimer.current = setTimeout(() => setNotice(null), 2600);
-	}, []);
-
-	useEffect(() => {
-		return () => {
-			if (noticeTimer.current) {
-				clearTimeout(noticeTimer.current);
-			}
-		};
-	}, []);
-
-	const handleQuickAction = useCallback(
-		(action: QuickAction) => {
-			if (action.route) {
-				router.push(action.route);
-				return;
-			}
-			if (action.message) {
-				showNotice(action.message);
-			}
-		},
-		[showNotice],
+	const survivorName = formatName(
+		survivorProfile?.survivorNickname ?? "orang yang kamu dampingi",
 	);
+	const companionName = formatName(user?.name ?? "Pendamping");
+	const homeMascot = mascotForHome(WEEKLY_SUMMARY.tone);
+
+	const handleQuickAction = (action: QuickAction) => {
+		router.push(action.route);
+	};
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top"]}>
@@ -106,17 +148,26 @@ export default function HomeScreen() {
 			>
 				<FadeIn>
 					<PageHeader
-						avatarName={survivorName}
+						avatarName={companionName}
 						greeting={getGreeting()}
 						name={companionName}
-						onPressNotification={() =>
-							showNotice("Belum ada notifikasi baru.")
-						}
+						onPressNotification={() => router.push("/notifikasi")}
 					/>
 				</FadeIn>
 
 				<FadeIn delay={60}>
 					<Card variant="hero" style={styles.heroCard}>
+						<View
+							pointerEvents="none"
+							accessibilityElementsHidden
+							importantForAccessibility="no-hide-descendants"
+							style={styles.heroSparkles}
+						>
+							<Icon3D name="sparkles" size={40} />
+						</View>
+						<View style={styles.heroMascot}>
+							<Mascot expression={homeMascot} size={88} />
+						</View>
 						<Text style={[type.h2, styles.heroTitle]}>
 							{survivorName} hari ini
 						</Text>
@@ -126,10 +177,15 @@ export default function HomeScreen() {
 						</Text>
 
 						<View style={styles.ringRow}>
-							<ProgressRing progress={0} size={124}>
-								<Text style={[type.h1, styles.ringValue]}>0</Text>
+							<ProgressRing
+								progress={WEEKLY_PROGRESS.done / WEEKLY_PROGRESS.target}
+								size={124}
+							>
+								<Text style={[type.h1, styles.ringValue]}>
+									{WEEKLY_PROGRESS.done}
+								</Text>
 								<Text style={[type.small, styles.ringLabel]}>
-									dari 1 sesi
+									dari {WEEKLY_PROGRESS.target} sesi
 								</Text>
 							</ProgressRing>
 							<View style={styles.ringSide}>
@@ -137,7 +193,8 @@ export default function HomeScreen() {
 									Sesi minggu ini
 								</Text>
 								<Text style={[type.body, styles.ringSideText]}>
-									Belum ada sesi minggu ini. Yuk, mulai bercerita bersama.
+									{WEEKLY_PROGRESS.done} dari {WEEKLY_PROGRESS.target} sesi
+									selesai. Satu sesi lagi untuk mencapai target.
 								</Text>
 							</View>
 						</View>
@@ -154,23 +211,13 @@ export default function HomeScreen() {
 				<FadeIn delay={120}>
 					<View style={styles.section}>
 						<Text style={[type.h3, styles.sectionTitle]}>Akses cepat</Text>
-						<View style={styles.quickRow}>
+						<View style={styles.quickGrid}>
 							{QUICK_ACTIONS.map((action) => (
-								<Pressable
+								<QuickTile
 									key={action.key}
-									accessibilityRole="button"
-									accessibilityLabel={action.label}
+									action={action}
 									onPress={() => handleQuickAction(action)}
-									style={({ pressed }) => [
-										styles.quickItem,
-										pressed && styles.pressed,
-									]}
-								>
-									<IconBadge icon={action.icon} tone={action.tone} size={54} />
-									<Text style={[type.small, styles.quickLabel]}>
-										{action.label}
-									</Text>
-								</Pressable>
+								/>
 							))}
 						</View>
 					</View>
@@ -181,17 +228,24 @@ export default function HomeScreen() {
 						<Text style={[type.h3, styles.sectionTitle]}>
 							Ringkasan minggu ini
 						</Text>
-						<Card style={styles.summaryCard}>
+						<Card>
 							<View style={styles.summaryBody}>
 								<Text style={[type.bodyStrong, styles.summaryTitle]}>
-									Belum ada gambaran minggu ini
+									{WEEKLY_SUMMARY.title}
 								</Text>
 								<Text style={[type.body, styles.summaryText]}>
-									Setelah sesi pertama, di sini akan muncul gambaran
-									perubahan cara bicara {survivorName}.
+									{WEEKLY_SUMMARY.body}
 								</Text>
+								<View style={styles.summaryStat}>
+									<Icon name="sparkles" size={14} color={colors.primary} />
+									<Text style={[type.small, styles.summaryStatText]}>
+										{WEEKLY_SUMMARY.status}
+									</Text>
+								</View>
 							</View>
-							<Illustration name="journey" size={132} />
+							<View style={styles.summaryIllustration}>
+								<Illustration name="journey" size={136} />
+							</View>
 						</Card>
 					</View>
 				</FadeIn>
@@ -201,9 +255,23 @@ export default function HomeScreen() {
 						<Text style={[type.h3, styles.sectionTitle]}>
 							Persiapan konsultasi
 						</Text>
+						<Photo
+							photo="lansia10"
+							radius="lg"
+							height={150}
+							label
+							style={styles.prepPhoto}
+						/>
 						<Card style={styles.doctorCard}>
 							<View style={styles.doctorRow}>
-								<IconBadge icon="doc" tone="primary" size={48} />
+								<View
+									style={[
+										styles.doctorTile,
+										{ backgroundColor: colors.primarySoft },
+									]}
+								>
+									<Icon3D name="memo" size={44} />
+								</View>
 								<View style={styles.doctorBody}>
 									<Text style={[type.bodyStrong, styles.doctorTitle]}>
 										Pertanyaan untuk dokter
@@ -217,9 +285,7 @@ export default function HomeScreen() {
 							<Pressable
 								accessibilityRole="button"
 								accessibilityLabel="Lihat daftar pertanyaan"
-								onPress={() =>
-									showNotice("Daftar pertanyaan tersedia setelah sesi pertama.")
-								}
+								onPress={() => router.push("/pertanyaan-dokter")}
 								style={({ pressed }) => [
 									styles.linkRow,
 									pressed && styles.pressed,
@@ -234,7 +300,14 @@ export default function HomeScreen() {
 
 						<Card style={styles.doctorCard}>
 							<View style={styles.doctorRow}>
-								<IconBadge icon="book" tone="mint" size={48} />
+								<View
+									style={[
+										styles.doctorTile,
+										{ backgroundColor: colors.leafSoft },
+									]}
+								>
+									<Icon3D name="clipboard" size={44} />
+								</View>
 								<View style={styles.doctorBody}>
 									<Text style={[type.bodyStrong, styles.doctorTitle]}>
 										Laporan untuk dokter
@@ -248,9 +321,7 @@ export default function HomeScreen() {
 							<Pressable
 								accessibilityRole="button"
 								accessibilityLabel="Lihat laporan"
-								onPress={() =>
-									showNotice("Laporan tersedia setelah sesi pertama.")
-								}
+								onPress={() => router.push("/laporan-dokter")}
 								style={({ pressed }) => [
 									styles.linkRow,
 									pressed && styles.pressed,
@@ -265,16 +336,6 @@ export default function HomeScreen() {
 					</View>
 				</FadeIn>
 			</ScrollView>
-
-			{notice ? (
-				<View
-					style={styles.notice}
-					accessibilityLiveRegion="polite"
-					pointerEvents="none"
-				>
-					<Text style={[type.body, styles.noticeText]}>{notice}</Text>
-				</View>
-			) : null}
 		</SafeAreaView>
 	);
 }
@@ -287,10 +348,19 @@ const styles = StyleSheet.create({
 	content: {
 		paddingHorizontal: layout.screenPadding,
 		paddingTop: 8,
-		paddingBottom: 28,
+		paddingBottom: 88,
 	},
 	heroCard: {
 		marginTop: 20,
+	},
+	heroSparkles: {
+		position: "absolute",
+		top: 14,
+		right: 16,
+	},
+	heroMascot: {
+		alignSelf: "center",
+		marginBottom: 4,
 	},
 	heroTitle: {
 		color: colors.textPrimary,
@@ -331,15 +401,24 @@ const styles = StyleSheet.create({
 		color: colors.textPrimary,
 		marginBottom: 14,
 	},
-	quickRow: {
+	quickGrid: {
 		flexDirection: "row",
-		gap: 8,
+		flexWrap: "wrap",
+		gap: 14,
 	},
 	quickItem: {
-		flex: 1,
+		width: "47.5%",
 		alignItems: "center",
-		minHeight: 48,
-		gap: 8,
+		justifyContent: "center",
+		gap: 10,
+		minHeight: 96,
+	},
+	quickTile: {
+		width: 84,
+		height: 84,
+		borderRadius: 32,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	quickLabel: {
 		color: colors.textPrimary,
@@ -348,14 +427,8 @@ const styles = StyleSheet.create({
 	pressed: {
 		opacity: 0.65,
 	},
-	summaryCard: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		gap: 12,
-	},
 	summaryBody: {
-		flex: 1,
+		alignSelf: "stretch",
 	},
 	summaryTitle: {
 		color: colors.textPrimary,
@@ -364,13 +437,37 @@ const styles = StyleSheet.create({
 		color: colors.textSecondary,
 		marginTop: 6,
 	},
+	summaryStat: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		marginTop: 10,
+	},
+	summaryStatText: {
+		color: colors.primary,
+		fontWeight: "600",
+	},
+	summaryIllustration: {
+		alignItems: "center",
+		marginTop: 16,
+	},
 	doctorCard: {
 		marginBottom: 12,
+	},
+	prepPhoto: {
+		marginBottom: 16,
 	},
 	doctorRow: {
 		flexDirection: "row",
 		alignItems: "flex-start",
 		gap: 14,
+	},
+	doctorTile: {
+		width: 60,
+		height: 60,
+		borderRadius: 30,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	doctorBody: {
 		flex: 1,
@@ -392,19 +489,5 @@ const styles = StyleSheet.create({
 	},
 	link: {
 		color: colors.primary,
-	},
-	notice: {
-		position: "absolute",
-		left: layout.screenPadding,
-		right: layout.screenPadding,
-		bottom: 16,
-		backgroundColor: colors.textPrimary,
-		borderRadius: radii.input,
-		paddingVertical: 14,
-		paddingHorizontal: 16,
-		...shadows.card,
-	},
-	noticeText: {
-		color: colors.surface,
 	},
 });

@@ -21,6 +21,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
+import { Mascot } from "../components/mascot/Mascot";
 import { Button } from "../components/ui/Button";
 import { Illustration } from "../components/ui/Illustration";
 import { ProgressRing } from "../components/ui/ProgressRing";
@@ -32,6 +33,7 @@ import {
 	type,
 } from "../constants/theme";
 import { useAuth } from "../lib/auth";
+import { formatName } from "../lib/formatName";
 import { successHaptic, tapHaptic } from "../lib/haptics";
 
 const TOTAL_STEPS = 4;
@@ -79,8 +81,8 @@ export default function SesiBerceritaScreen() {
 	const reduceMotion = useReducedMotion();
 	const { user, survivorProfile } = useAuth();
 
-	const survivorName = survivorProfile?.survivorNickname ?? "Bapak/Ibu";
-	const companionName = user?.name ?? "pendamping";
+	const survivorName = formatName(survivorProfile?.survivorNickname ?? "Bapak/Ibu");
+	const companionName = formatName(user?.name ?? "pendamping");
 	const assisted =
 		survivorProfile?.practiceMode === "companion" ||
 		survivorProfile?.instructionPreference === "companion_assistance";
@@ -149,6 +151,36 @@ export default function SesiBerceritaScreen() {
 		};
 	}, [recording]);
 
+	function MicRipple({
+		wave,
+		phase,
+		index,
+	}: {
+		wave: SharedValue<number>;
+		phase: number;
+		index: number;
+	}) {
+		const ringStyle = useAnimatedStyle(() => {
+			const t = (wave.value + phase) % 1;
+			return {
+				opacity: 0.35 * (1 - t),
+				transform: [{ scale: 1 + 0.7 * t }],
+			};
+		});
+		return (
+			<Animated.View
+				pointerEvents="none"
+				style={[
+					styles.micRipple,
+					{
+						borderColor: index % 2 === 0 ? colors.marigold : colors.orange,
+					},
+					ringStyle,
+				]}
+			/>
+		);
+	}
+
 	const breathStyle = useAnimatedStyle(() => ({
 		transform: [{ scale: 1 + breath.value * 0.06 }],
 	}));
@@ -201,7 +233,7 @@ export default function SesiBerceritaScreen() {
 				<Animated.View key={step} entering={exiting} style={styles.stepWrap}>
 					{step === 0 ? (
 						<View style={styles.centerTop}>
-							<Illustration name="session" size={200} />
+							<Mascot expression="menyambut" size={160} decorative />
 							<Text style={[type.survivorTitle, styles.title]}>
 								Halo, {survivorName}.
 							</Text>
@@ -214,6 +246,7 @@ export default function SesiBerceritaScreen() {
 
 					{step === 1 ? (
 						<View style={styles.centerTop}>
+							<Mascot expression="berbicara" size={120} decorative style={styles.sessionMascot} />
 							<Text style={[type.survivorBody, styles.instruction]}>
 								Ceritakan apa saja yang terlihat di gambar ini.
 							</Text>
@@ -233,17 +266,30 @@ export default function SesiBerceritaScreen() {
 
 					{step === 2 ? (
 						<View style={styles.centerTop}>
+							<Mascot expression="mendengar" size={140} decorative style={styles.sessionMascot} />
 							<Text style={[type.survivorBody, styles.instruction]}>
 								{encouragement}
 							</Text>
 							<View style={styles.micArea}>
-								<ProgressRing
-									progress={elapsed / SESSION_SECONDS}
-									size={252}
-									strokeWidth={14}
-									color={colors.primary}
-									trackColor="rgba(27,110,100,0.14)"
-								>
+<ProgressRing
+								progress={elapsed / SESSION_SECONDS}
+								size={252}
+								strokeWidth={14}
+								color={colors.primary}
+								trackColor={`${colors.primary}26`}
+								overlay={
+									recording && !reduceMotion
+										? [0, 0.34, 0.66].map((phase, index) => (
+												<MicRipple
+													key={index}
+													wave={wave}
+													phase={phase}
+													index={index}
+												/>
+											))
+										: undefined
+								}
+							>
 									<Animated.View style={breathStyle}>
 										<Pressable
 											accessibilityRole="button"
@@ -283,7 +329,7 @@ export default function SesiBerceritaScreen() {
 
 					{step === 3 ? (
 						<View style={styles.centerTop}>
-							<Illustration name="conversation" size={190} />
+							<Mascot expression="terimakasih" size={160} decorative />
 							<Text style={[type.survivorTitle, styles.title]}>
 								Terima kasih, {survivorName}.
 							</Text>
@@ -483,6 +529,9 @@ const styles = StyleSheet.create({
 		textAlign: "center",
 		marginBottom: 20,
 	},
+	sessionMascot: {
+		marginBottom: 8,
+	},
 	stimulus: {
 		backgroundColor: colors.surface,
 		borderRadius: radii.card,
@@ -515,6 +564,13 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		...shadows.hero,
+	},
+	micRipple: {
+		width: 150,
+		height: 150,
+		borderRadius: 75,
+		borderWidth: 2,
+		position: "absolute",
 	},
 	micButtonActive: {
 		backgroundColor: colors.primaryDark,

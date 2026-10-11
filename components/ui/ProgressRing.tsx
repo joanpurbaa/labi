@@ -19,6 +19,7 @@ type ProgressRingProps = {
 	color?: string;
 	trackColor?: string;
 	children?: ReactNode;
+	overlay?: ReactNode;
 };
 
 export function ProgressRing({
@@ -26,8 +27,9 @@ export function ProgressRing({
 	size = 132,
 	strokeWidth = 12,
 	color = colors.primary,
-	trackColor = "rgba(27,110,100,0.16)",
+	trackColor = `${colors.primary}26`,
 	children,
+	overlay,
 }: ProgressRingProps) {
 	const reduceMotion = useReducedMotion();
 	const radius = (size - strokeWidth) / 2;
@@ -72,6 +74,11 @@ export function ProgressRing({
 					transform={`rotate(-90 ${size / 2} ${size / 2})`}
 				/>
 			</Svg>
+			{overlay ? (
+				<View pointerEvents="none" style={StyleSheet.absoluteFill}>
+					<View style={styles.overlayCenter}>{overlay}</View>
+				</View>
+			) : null}
 			<View style={styles.center}>{children}</View>
 		</View>
 	);
@@ -79,6 +86,11 @@ export function ProgressRing({
 
 const styles = StyleSheet.create({
 	wrap: {
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	overlayCenter: {
+		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
 	},

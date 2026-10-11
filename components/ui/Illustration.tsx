@@ -29,9 +29,9 @@ export function Illustration({ name, size = 160 }: IllustrationProps) {
 							rx={24}
 							fill={colors.accentSoft}
 						/>
-						<Circle cx={44} cy={57} r={6} fill="#B5641F" />
-						<Circle cx={68} cy={57} r={6} fill="#B5641F" />
-						<Circle cx={92} cy={57} r={6} fill="#B5641F" />
+						<Circle cx={44} cy={57} r={6} fill={colors.orange} />
+						<Circle cx={68} cy={57} r={6} fill={colors.orange} />
+						<Circle cx={92} cy={57} r={6} fill={colors.orange} />
 						<Rect
 							x={76}
 							y={72}
@@ -83,31 +83,35 @@ export function Illustration({ name, size = 160 }: IllustrationProps) {
 
 				{name === "session" ? (
 					<>
-						<Circle cx={100} cy={80} r={62} fill={colors.primarySoft} />
+						<Circle cx={100} cy={78} r={62} fill={colors.primarySoft} />
 						<Rect
-							x={84}
-							y={44}
-							width={32}
-							height={56}
-							rx={16}
+							x={82}
+							y={46}
+							width={36}
+							height={30}
+							rx={15}
 							fill={colors.primary}
 						/>
 						<Path
-							d="M68 84 a32 32 0 0 0 64 0"
+							d="M74 76 a26 26 0 0 0 52 0"
 							stroke={colors.primary}
 							strokeWidth={7}
 							strokeLinecap="round"
 							fill="none"
 						/>
 						<Path
-							d="M100 116 V132"
+							d="M100 102 V112"
 							stroke={colors.primary}
 							strokeWidth={7}
 							strokeLinecap="round"
 						/>
 						<Path
-							d="M168 40 l3.5 8 8 3.5 -8 3.5 -3.5 8 -3.5 -8 -8 -3.5 8 -3.5 z"
-							fill={colors.accent}
+							d="M166 30 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 z"
+							fill={colors.orange}
+						/>
+						<Path
+							d="M34 30 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 z"
+							fill={colors.orange}
 						/>
 					</>
 				) : null}

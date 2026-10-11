@@ -8,7 +8,7 @@ import {
 	type StyleProp,
 	type TextStyle,
 } from "react-native";
-import { colors, fonts, radii, shadows, type } from "../constants/theme";
+import { colors, fonts, radii, type } from "../constants/theme";
 import { Icon } from "./Icon";
 
 type TextFieldProps = ComponentProps<typeof TextInput> & {
@@ -18,35 +18,20 @@ type TextFieldProps = ComponentProps<typeof TextInput> & {
 };
 
 export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField(
-	{ label, error, secure, onFocus, onBlur, style, ...rest },
+	{ label, error, secure, style, ...rest },
 	ref,
 ) {
-	const [focused, setFocused] = useState(false);
 	const [hidden, setHidden] = useState(Boolean(secure));
 
 	return (
 		<View style={styles.wrapper}>
 			<Text style={[type.label, styles.label]}>{label}</Text>
-			<View
-				style={[
-					styles.inputRow,
-					focused && styles.inputRowFocused,
-					error ? styles.inputRowError : null,
-				]}
-			>
+			<View style={[styles.inputRow, error ? styles.inputRowError : null]}>
 				<TextInput
 					ref={ref}
 					{...rest}
 					secureTextEntry={secure ? hidden : false}
 					placeholderTextColor={colors.textSecondary}
-					onFocus={(event) => {
-						setFocused(true);
-						onFocus?.(event);
-					}}
-					onBlur={(event) => {
-						setFocused(false);
-						onBlur?.(event);
-					}}
 					style={[styles.input, style as StyleProp<TextStyle>]}
 				/>
 				{secure ? (
@@ -92,10 +77,6 @@ const styles = StyleSheet.create({
 		borderRadius: radii.input,
 		backgroundColor: colors.surface,
 		paddingHorizontal: 16,
-	},
-	inputRowFocused: {
-		borderColor: colors.primary,
-		...shadows.pill,
 	},
 	inputRowError: {
 		borderColor: colors.danger,

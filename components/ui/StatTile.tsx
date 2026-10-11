@@ -1,7 +1,8 @@
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
-import { colors, type } from "../../constants/theme";
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { colors } from "../../constants/theme";
 import { Icon, type IconName } from "../Icon";
 import { IconBadge, type BadgeTone } from "./IconBadge";
+import { AppText } from "./AppText";
 
 type StatTileProps = {
 	label: string;
@@ -23,12 +24,14 @@ export function StatTile({
 	return (
 		<View style={[styles.tile, style]}>
 			<IconBadge icon={icon} tone={tone} size={44} />
-			<Text style={[type.h2, styles.value]}>{value}</Text>
-			<Text style={[type.small, styles.label]}>{label}</Text>
+			<AppText variant="numeric" style={[styles.value]}>{value}</AppText>
+			<AppText variant="caption" style={[styles.label]}>{label}</AppText>
 			{helper ? (
 				<View style={styles.helper}>
 					<Icon name="info" size={14} color={colors.textSecondary} />
-					<Text style={[type.small, styles.helperText]}>{helper}</Text>
+					<AppText variant="caption" style={[styles.helperText]}>
+						{helper}
+					</AppText>
 				</View>
 			) : null}
 		</View>

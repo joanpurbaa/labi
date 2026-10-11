@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon, type IconName } from "../../components/Icon";
+import { Icon3D } from "../../components/icons/Icon3D";
 import { Avatar } from "../../components/ui/Avatar";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
@@ -23,6 +24,7 @@ import {
 	type,
 } from "../../constants/theme";
 import { useAuth } from "../../lib/auth";
+import { formatName } from "../../lib/formatName";
 import {
 	isHapticsEnabled,
 	loadHapticsPreference,
@@ -154,9 +156,9 @@ export default function ProfilScreen() {
 		loadHapticsPreference().then(setHaptics);
 	}, []);
 
-	const companionName = user?.name ?? "Pendamping";
+	const companionName = formatName(user?.name ?? "Pendamping");
 	const companionEmail = user?.email ?? "-";
-	const survivorName = survivorProfile?.survivorNickname ?? "penyintas";
+	const survivorName = formatName(survivorProfile?.survivorNickname ?? "penyintas");
 
 	const runDelete = async () => {
 		setDeleting(true);
@@ -198,9 +200,18 @@ export default function ProfilScreen() {
 			>
 				<FadeIn>
 					<View style={styles.hero}>
-						<Avatar name={companionName} size={84} />
+						<View style={styles.avatarRing}>
+							<Avatar name={companionName} size={84} />
+						</View>
 						<Text style={[type.h1, styles.name]}>{companionName}</Text>
-						<Text style={[type.body, styles.email]}>{companionEmail}</Text>
+						<Text
+							style={[type.body, styles.email]}
+							numberOfLines={1}
+							adjustsFontSizeToFit
+							minimumFontScale={0.85}
+						>
+							{companionEmail}
+						</Text>
 						<View style={styles.badge}>
 							<Icon name="profile" size={14} color={colors.primary} />
 							<Text style={[type.small, styles.badgeText]}>Pendamping</Text>
@@ -221,7 +232,7 @@ export default function ProfilScreen() {
 							<>
 								<InfoRow
 									label="Nama panggilan"
-									value={survivorProfile.survivorNickname}
+									value={formatName(survivorProfile.survivorNickname)}
 								/>
 								<InfoRow
 									label="Rentang usia"
@@ -321,10 +332,17 @@ export default function ProfilScreen() {
 				</FadeIn>
 
 				<View style={styles.note}>
-					<Icon name="lock" size={16} color={colors.textSecondary} />
-					<Text style={[type.small, styles.noteText]}>
-						Data disimpan hanya di perangkat ini.
-					</Text>
+					<View style={styles.noteTile}>
+						<Icon3D name="locked" size={40} />
+					</View>
+					<View style={styles.noteBody}>
+						<Text style={[type.bodyStrong, styles.noteTitle]}>
+							Data aman di perangkat ini
+						</Text>
+						<Text style={[type.small, styles.noteText]}>
+							Data hanya disimpan di perangkat ini, tidak dibagikan.
+						</Text>
+					</View>
 				</View>
 
 				<Button
@@ -365,11 +383,18 @@ const styles = StyleSheet.create({
 	content: {
 		paddingTop: spacing.xxl,
 		paddingHorizontal: layout.screenPadding,
-		paddingBottom: spacing.xxxl,
+		paddingBottom: 88,
 	},
 	hero: {
 		alignItems: "center",
 		marginBottom: spacing.xxl,
+	},
+	avatarRing: {
+		padding: 6,
+		borderRadius: 999,
+		borderWidth: 2,
+		borderColor: colors.primarySoft,
+		backgroundColor: colors.surface,
 	},
 	name: {
 		color: colors.textPrimary,
@@ -379,6 +404,8 @@ const styles = StyleSheet.create({
 	email: {
 		color: colors.textSecondary,
 		marginTop: 4,
+		textAlign: "center",
+		alignSelf: "center",
 	},
 	badge: {
 		flexDirection: "row",
@@ -468,15 +495,29 @@ const styles = StyleSheet.create({
 	note: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 8,
-		padding: 14,
+		gap: 14,
+		padding: 16,
 		borderRadius: radii.cardSmall,
 		backgroundColor: colors.surface,
 		marginBottom: spacing.xl,
 	},
+	noteTile: {
+		width: 56,
+		height: 56,
+		borderRadius: 28,
+		alignItems: "center",
+		justifyContent: "center",
+		backgroundColor: colors.leafSoft,
+	},
+	noteBody: {
+		flex: 1,
+		gap: 2,
+	},
+	noteTitle: {
+		color: colors.textPrimary,
+	},
 	noteText: {
 		color: colors.textSecondary,
-		flexShrink: 1,
 	},
 	action: {
 		marginBottom: 12,

@@ -1,42 +1,87 @@
-import type { TextStyle, ViewStyle } from "react-native";
+import type { ViewStyle } from "react-native";
+import { type, fonts } from "./typography";
+
+export { type, fonts }; // single source: constants/typography.ts
+
+// ── ATURAN EMAS WORKLETS (react-native-reanimated / react-native-worklets) ──────
+// Di dalam useAnimatedStyle, useAnimatedProps, useDerivedValue, useAnimatedReaction,
+// useAnimatedScrollHandler, callback withTiming/withSpring/withSequence/withRepeat,
+// handler gesture, dan worklet lain, HANYA boleh dipakai:
+//   (a) SharedValue (baca/tulis lewat .value),
+//   (b) nilai primitif (angka/string/boolean) yang di-capture dari luar,
+//   (c) fungsi diberi direktif "worklet" yang hanya memakai (a)/(b) atau worklet lain,
+//   (d) API Reanimated/Math bawaan (interpolate, Math.min, dsb).
+// DILARANG memanggil fungsi biasa (helper tema/format/closure komponen) di thread UI;
+// hitung geometri di thread JS → kirim via SharedValue yang di-set dari useEffect/handler.
+// Efek samping JS (haptic, setState, navigasi) dari worklet WAJIB via runOnJS/scheduleOnRN.
+// ─────────────────────────────────────────────────────────────────────────────────
 
 export const colors = {
-	background: "#FBF6EF",
-	bg: "#FBF6EF",
+	background: "#FFF8EE",
+	bg: "#FFF8EE",
 	surface: "#FFFFFF",
 	card: "#FFFFFF",
-	surfaceWarm: "#FFF1E3",
-	accentSoft: "#FDE7D3",
-	textPrimary: "#1F2A28",
-	text: "#1F2A28",
-	textSecondary: "#5A6663",
-	textMuted: "#5A6663",
-	border: "#ECE4DA",
-	borderStrong: "#E0D6C8",
-	primary: "#1B6E64",
-	primaryDark: "#14544C",
-	primarySoft: "#E3F1EE",
-	accent: "#F6B27A",
-	success: "#1E6B3A",
-	danger: "#9C3F2B",
-	dangerSoft: "#FBE9E3",
+	surfaceWarm: "#FFEFD9",
+	accentSoft: "#FFE6D0",
+	textPrimary: "#2B2220",
+	text: "#2B2220",
+	textSecondary: "#6B5B55",
+	textMuted: "#6B5B55",
+	border: "#F0E2D2",
+	borderStrong: "#E3D1BC",
+	primary: "#C73E25",
+	primaryDark: "#A5301B",
+	primarySoft: "#FFE3D8",
+	accent: "#EE8A3A",
+	marigold: "#F5B83D",
+	marigoldSoft: "#FFF0C7",
+	orange: "#EE8A3A",
+	orangeSoft: "#FFE6D0",
+	leaf: "#8CC063",
+	leafSoft: "#E8F4DA",
+	berry: "#8B3A62",
+	berrySoft: "#F7E6EE",
+	success: "#8CC063",
+	danger: "#B23A2A",
+	dangerSoft: "#FBEAE4",
+	watchFg: "#7A4B00",
+	orangeDark: "#AE5621",
+	leafDark: "#5B8A34",
+	amberDark: "#9A6200",
+	marigoldLow: "rgba(245, 184, 61, 0.22)",
 } as const;
 
+// Kategori warna ikon duotone (garis + isian lembut). Jangan hardcode warna ini di layar.
+export const duoColors = {
+	primary: { line: colors.primaryDark, tint: colors.marigold },
+	history: { line: colors.orangeDark, tint: colors.marigold },
+	chart: { line: colors.amberDark, tint: colors.marigold },
+	info: { line: colors.leafDark, tint: colors.leaf },
+	neutral: { line: colors.textMuted, tint: colors.marigoldLow },
+} as const;
+
+export type DuoTone = keyof typeof duoColors;
+
 export const statusColors = {
-	stable: { bg: "#E4F3E8", fg: "#1E6B3A" },
-	watch: { bg: "#FFF3DC", fg: "#8A5200" },
-	consult: { bg: "#FBE9E3", fg: "#9C3F2B" },
+	stable: { bg: colors.leafSoft, fg: colors.text },
+	watch: { bg: colors.marigoldSoft, fg: colors.watchFg },
+	consult: { bg: colors.berrySoft, fg: colors.berry },
 } as const;
 
 export type StatusTone = keyof typeof statusColors;
 
 export const radii = {
-	card: 24,
-	cardSmall: 18,
-	button: 999,
+	xs: 10,
+	sm: 14,
+	md: 18,
+	lg: 24,
+	xl: 32,
 	pill: 999,
+	button: 999,
 	input: 16,
 	icon: 14,
+	card: 24,
+	cardSmall: 18,
 } as const;
 
 export const layout = {
@@ -55,70 +100,31 @@ export const spacing = {
 	xxxl: 32,
 } as const;
 
-export const fonts = {
-	heading: "PlusJakartaSans-Bold",
-	semibold: "PlusJakartaSans-SemiBold",
-	medium: "PlusJakartaSans-Medium",
-	body: "PlusJakartaSans-Regular",
-	survivor: "AtkinsonHyperlegible-Regular",
-	survivorBold: "AtkinsonHyperlegible-Bold",
-} as const;
-
-export const type = {
-	display: {
-		fontFamily: fonts.heading,
-		fontSize: 30,
-		lineHeight: 38,
-	},
-	h1: { fontFamily: fonts.heading, fontSize: 25, lineHeight: 32 },
-	h2: { fontFamily: fonts.semibold, fontSize: 20, lineHeight: 28 },
-	h3: { fontFamily: fonts.semibold, fontSize: 17, lineHeight: 24 },
-	body: { fontFamily: fonts.body, fontSize: 16, lineHeight: 24 },
-	bodyStrong: { fontFamily: fonts.semibold, fontSize: 16, lineHeight: 24 },
-	label: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 21 },
-	small: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20 },
-	survivorTitle: {
-		fontFamily: fonts.survivorBold,
-		fontSize: 31,
-		lineHeight: 46,
-	},
-	survivorBody: {
-		fontFamily: fonts.survivor,
-		fontSize: 22,
-		lineHeight: 35,
-	},
-	survivorButton: {
-		fontFamily: fonts.survivorBold,
-		fontSize: 23,
-		lineHeight: 30,
-	},
-} satisfies Record<string, TextStyle>;
-
 export const shadows: Record<"card" | "hero" | "pill" | "nav", ViewStyle> = {
 	card: {
-		shadowColor: "#785028",
-		shadowOpacity: 0.08,
-		shadowRadius: 24,
+		shadowColor: "#783C14",
+		shadowOpacity: 0.1,
+		shadowRadius: 20,
 		shadowOffset: { width: 0, height: 6 },
 		elevation: 3,
 	},
 	hero: {
-		shadowColor: "#B07A45",
-		shadowOpacity: 0.14,
-		shadowRadius: 28,
-		shadowOffset: { width: 0, height: 10 },
+		shadowColor: "#783C14",
+		shadowOpacity: 0.12,
+		shadowRadius: 24,
+		shadowOffset: { width: 0, height: 8 },
 		elevation: 5,
 	},
 	pill: {
-		shadowColor: "#785028",
+		shadowColor: "#783C14",
 		shadowOpacity: 0.1,
 		shadowRadius: 12,
 		shadowOffset: { width: 0, height: 4 },
 		elevation: 2,
 	},
 	nav: {
-		shadowColor: "#785028",
-		shadowOpacity: 0.1,
+		shadowColor: "#783C14",
+		shadowOpacity: 0.12,
 		shadowRadius: 18,
 		shadowOffset: { width: 0, height: -4 },
 		elevation: 8,
@@ -126,14 +132,20 @@ export const shadows: Record<"card" | "hero" | "pill" | "nav", ViewStyle> = {
 };
 
 export const gradients = {
-	hero: ["#FFF3E6", "#FBF6EF"] as const,
-	warm: ["#FBF6EF", "#FDE7D3"] as const,
-	mint: ["#FBF6EF", "#E3F1EE"] as const,
+	hero: ["#FFF8EE", "#FFF0C7", "#FFE6D0"] as const,
+	warm: ["#FFF8EE", "#FFEFD9"] as const,
+	splash: ["#F5B83D", "#EE8A3A"] as const,
 };
 
 export const motion = {
-	enterDuration: 340,
+	fast: 120,
+	base: 250,
+	slow: 450,
+	enterDuration: 320,
 	stagger: 60,
 	pressScale: 0.97,
 	ringDuration: 700,
+	springSoft: { damping: 14, stiffness: 120, mass: 1 } as const,
+	springSnappy: { damping: 18, stiffness: 260, mass: 0.8 } as const,
+	maxFontScale: 1.4,
 } as const;

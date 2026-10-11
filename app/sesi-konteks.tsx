@@ -15,6 +15,7 @@ import {
 	type,
 } from "../constants/theme";
 import { useAuth } from "../lib/auth";
+import { formatName } from "../lib/formatName";
 import { tapHaptic } from "../lib/haptics";
 
 type Question = {
@@ -69,7 +70,7 @@ const QUESTIONS: Question[] = [
 export default function SesiKonteksScreen() {
 	const router = useRouter();
 	const { survivorProfile } = useAuth();
-	const survivorName = survivorProfile?.survivorNickname ?? "penyintas";
+	const survivorName = formatName(survivorProfile?.survivorNickname ?? "penyintas");
 
 	const [step, setStep] = useState(0);
 	const [answers, setAnswers] = useState<Record<string, string>>({});

@@ -10,7 +10,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, gradients, layout, radii, type } from "../constants/theme";
+import { Photo } from "./photo/Photo";
 import { Icon } from "./Icon";
+import { Mascot } from "./mascot/Mascot";
 
 type AuthScreenProps = {
 	title: string;
@@ -21,7 +23,7 @@ type AuthScreenProps = {
 function AuthContent({ title, subtitle, children }: AuthScreenProps) {
 	return (
 		<>
-			<View style={styles.brandRow}>
+			{/* <View style={styles.brandRow}>
 				<View style={styles.brandMark}>
 					<Icon name="brand" size={24} color={colors.primary} />
 				</View>
@@ -29,7 +31,11 @@ function AuthContent({ title, subtitle, children }: AuthScreenProps) {
 					<Text style={[type.h3, styles.brandName]}>LABI</Text>
 					<Text style={[type.small, styles.brandTagline]}>Lansia Berbicara</Text>
 				</View>
-			</View>
+			</View> */}
+
+			{/* <Photo photo="lansia2" radius="xl" kenBurns label style={styles.heroPhoto} /> */}
+
+			<Mascot expression="menyambut" size={160} decorative style={styles.mascot} />
 
 			<Text style={[type.display, styles.title]}>{title}</Text>
 			<Text style={[type.body, styles.subtitle]}>{subtitle}</Text>
@@ -49,9 +55,13 @@ export function AuthScreen(props: AuthScreenProps) {
 				style={StyleSheet.absoluteFill}
 			/>
 			{Platform.OS === "android" ? (
-				<View style={[styles.flex, styles.content]}>
+				<ScrollView
+					contentContainerStyle={styles.content}
+					keyboardShouldPersistTaps="always"
+					showsVerticalScrollIndicator={false}
+				>
 					<AuthContent {...props} />
-				</View>
+				</ScrollView>
 			) : (
 				<KeyboardAvoidingView style={styles.flex} behavior="padding">
 					<ScrollView
@@ -100,6 +110,13 @@ const styles = StyleSheet.create({
 	brandTagline: {
 		color: colors.textSecondary,
 		marginTop: 1,
+	},
+	heroPhoto: {
+		marginTop: 24,
+	},
+	mascot: {
+		alignSelf: "center",
+		marginTop: 20,
 	},
 	title: {
 		color: colors.textPrimary,

@@ -9,10 +9,13 @@ import Animated, {
 	withTiming,
 } from "react-native-reanimated";
 import { colors, type } from "../../constants/theme";
+import { Photo } from "../photo/Photo";
+import type { PhotoKey } from "../photo/photoRegistry";
 import { Illustration, type IllustrationName } from "./Illustration";
 
 type EmptyStateProps = {
 	illustration?: IllustrationName;
+	photo?: PhotoKey;
 	title: string;
 	description: string;
 	action?: React.ReactNode;
@@ -20,6 +23,7 @@ type EmptyStateProps = {
 
 export function EmptyState({
 	illustration = "conversation",
+	photo,
 	title,
 	description,
 	action,
@@ -44,9 +48,15 @@ export function EmptyState({
 
 	return (
 		<View style={styles.wrap}>
-			<Animated.View style={floatStyle}>
-				<Illustration name={illustration} size={168} />
-			</Animated.View>
+			{photo ? (
+				<View style={styles.photoWrap}>
+					<Photo photo={photo} radius="lg" label />
+				</View>
+			) : (
+				<Animated.View style={floatStyle}>
+					<Illustration name={illustration} size={168} />
+				</Animated.View>
+			)}
 			<Text style={[type.h3, styles.title]}>{title}</Text>
 			<Text style={[type.body, styles.description]}>{description}</Text>
 			{action ? <View style={styles.action}>{action}</View> : null}
@@ -58,6 +68,9 @@ const styles = StyleSheet.create({
 	wrap: {
 		alignItems: "center",
 		paddingVertical: 12,
+	},
+	photoWrap: {
+		alignSelf: "stretch",
 	},
 	title: {
 		color: colors.textPrimary,

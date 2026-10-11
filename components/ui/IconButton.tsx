@@ -1,10 +1,12 @@
 import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from "react-native";
 import { colors, shadows } from "../../constants/theme";
+import { type Icon3DName, Icon3D } from "../icons/Icon3D";
 import { tapHaptic } from "../../lib/haptics";
 import { Icon, type IconName } from "../Icon";
 
 type IconButtonProps = {
 	icon: IconName;
+	threeD?: Icon3DName;
 	label: string;
 	onPress: () => void;
 	size?: number;
@@ -14,6 +16,7 @@ type IconButtonProps = {
 
 export function IconButton({
 	icon,
+	threeD,
 	label,
 	onPress,
 	size = 48,
@@ -35,7 +38,11 @@ export function IconButton({
 				style,
 			]}
 		>
-			<Icon name={icon} size={22} color={color} />
+			{threeD ? (
+				<Icon3D name={threeD} size={30} />
+			) : (
+				<Icon name={icon} size={22} color={color} />
+			)}
 		</Pressable>
 	);
 }

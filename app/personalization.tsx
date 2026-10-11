@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChoiceGroup } from "../components/ChoiceGroup";
 import { Icon } from "../components/Icon";
+import { Mascot } from "../components/mascot/Mascot";
 import { Button } from "../components/ui/Button";
 import { FadeIn } from "../components/ui/FadeIn";
 import { TextField } from "../components/TextField";
@@ -343,6 +344,12 @@ export default function PersonalizationScreen() {
 							<Icon name="brand" size={20} color={colors.primary} />
 						</View>
 						<Text style={[type.h3, styles.brandName]}>LABI</Text>
+						<Mascot
+							expression="menyambut"
+							size={72}
+							decorative
+							style={styles.onboardingMascot}
+						/>
 					</View>
 
 					<Text style={[type.small, styles.stepLabel]}>
@@ -444,6 +451,9 @@ const styles = StyleSheet.create({
 	brandName: {
 		color: colors.textPrimary,
 		letterSpacing: 0.2,
+	},
+	onboardingMascot: {
+		marginLeft: "auto",
 	},
 	stepLabel: {
 		color: colors.textSecondary,

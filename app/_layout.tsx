@@ -1,9 +1,18 @@
+import {
+	PlusJakartaSans_800ExtraBold,
+	PlusJakartaSans_700Bold,
+	PlusJakartaSans_600SemiBold,
+	PlusJakartaSans_400Regular,
+} from "@expo-google-fonts/plus-jakarta-sans";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { StyleSheet, View } from "react-native";
+import { AnimatedSplash } from "../components/AnimatedSplash";
 import { colors } from "../constants/theme";
 import { AuthProvider, useAuth } from "../lib/auth";
+import { CenterAuditBanner } from "../lib/centerAudit";
 import { loadHapticsPreference } from "../lib/haptics";
 
 function RootNavigator() {
@@ -24,9 +33,14 @@ function RootNavigator() {
 			<Stack.Protected guard={isLoggedIn && !needsOnboarding}>
 				<Stack.Screen name="(tabs)" />
 				<Stack.Screen name="sesi-bercerita" />
+				<Stack.Screen name="sesi-detail" />
+				<Stack.Screen name="notifikasi" />
+				<Stack.Screen name="pertanyaan-dokter" />
+				<Stack.Screen name="laporan-dokter" />
 				<Stack.Screen name="sesi-konteks" />
 				<Stack.Screen name="riwayat" />
 				<Stack.Screen name="perkembangan" />
+				<Stack.Screen name="panduan" />
 			</Stack.Protected>
 			<Stack.Protected guard={isLoggedIn && needsOnboarding}>
 				<Stack.Screen name="personalization" />
@@ -40,13 +54,12 @@ function RootNavigator() {
 
 export default function RootLayout() {
 	const [fontsLoaded] = useFonts({
-		"PlusJakartaSans-Regular": require("../assets/fonts/PlusJakartaSans-Regular.ttf"),
-		"PlusJakartaSans-Medium": require("../assets/fonts/PlusJakartaSans-Medium.ttf"),
-		"PlusJakartaSans-SemiBold": require("../assets/fonts/PlusJakartaSans-SemiBold.ttf"),
-		"PlusJakartaSans-Bold": require("../assets/fonts/PlusJakartaSans-Bold.ttf"),
-		"AtkinsonHyperlegible-Regular": require("../assets/fonts/AtkinsonHyperlegible-Regular.ttf"),
-		"AtkinsonHyperlegible-Bold": require("../assets/fonts/AtkinsonHyperlegible-Bold.ttf"),
+		PlusJakartaSans_800ExtraBold,
+		PlusJakartaSans_700Bold,
+		PlusJakartaSans_600SemiBold,
+		PlusJakartaSans_400Regular,
 	});
+	const [showSplash, setShowSplash] = useState(true);
 
 	useEffect(() => {
 		loadHapticsPreference();
@@ -58,8 +71,21 @@ export default function RootLayout() {
 
 	return (
 		<AuthProvider>
-			<StatusBar style="dark" />
-			<RootNavigator />
+			<View style={styles.root}>
+				<StatusBar style="dark" />
+				<RootNavigator />
+				{showSplash ? (
+					<AnimatedSplash onFinish={() => setShowSplash(false)} />
+				) : null}
+				<CenterAuditBanner />
+			</View>
 		</AuthProvider>
 	);
 }
+
+const styles = StyleSheet.create({
+	root: {
+		flex: 1,
+		backgroundColor: colors.background,
+	},
+});

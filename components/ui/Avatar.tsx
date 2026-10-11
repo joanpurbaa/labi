@@ -23,8 +23,8 @@ function initialsOf(name: string): string {
 export function Avatar({
 	name,
 	size = 56,
-	backgroundColor = colors.accentSoft,
-	color = "#8A4B12",
+	backgroundColor = colors.surfaceWarm,
+	color = colors.text,
 }: AvatarProps) {
 	return (
 		<View
@@ -56,6 +56,6 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	text: {
-		fontFamily: fonts.semibold,
+		fontFamily: fonts.bodyStrong,
 	},
 });

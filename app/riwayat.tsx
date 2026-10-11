@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon, type IconName } from "../components/Icon";
 import { Card } from "../components/ui/Card";
+import { EmptyState } from "../components/ui/EmptyState";
 import { FadeIn } from "../components/ui/FadeIn";
 import { StatusChip } from "../components/ui/StatusChip";
 import {
@@ -12,58 +13,10 @@ import {
 	shadows,
 	spacing,
 	type,
-	type StatusTone,
 } from "../constants/theme";
 import { useAuth } from "../lib/auth";
-
-type SessionItem = {
-	id: string;
-	when: string;
-	duration: string;
-	mood: string;
-	sleep: string;
-	tone: StatusTone;
-	status: string;
-};
-
-const SESSIONS: SessionItem[] = [
-	{
-		id: "s4",
-		when: "Minggu ini · 5 Okt",
-		duration: "3 menit",
-		mood: "Tenang",
-		sleep: "Nyenyak",
-		tone: "stable",
-		status: "Sesuai kebiasaan",
-	},
-	{
-		id: "s3",
-		when: "28 Sep",
-		duration: "3 menit",
-		mood: "Lelah",
-		sleep: "Kurang",
-		tone: "watch",
-		status: "Perlu dicermati",
-	},
-	{
-		id: "s2",
-		when: "21 Sep",
-		duration: "2 menit",
-		mood: "Senang",
-		sleep: "Cukup",
-		tone: "stable",
-		status: "Sesuai kebiasaan",
-	},
-	{
-		id: "s1",
-		when: "14 Sep",
-		duration: "3 menit",
-		mood: "Cemas",
-		sleep: "Sulit tidur",
-		tone: "consult",
-		status: "Bisa dibawa ke dokter",
-	},
-];
+import { DUMMY_SESSIONS } from "../lib/dummyData";
+import { formatName } from "../lib/formatName";
 
 function ContextChip({ icon, label }: { icon: IconName; label: string }) {
 	return (
@@ -77,7 +30,7 @@ function ContextChip({ icon, label }: { icon: IconName; label: string }) {
 export default function RiwayatScreen() {
 	const router = useRouter();
 	const { survivorProfile } = useAuth();
-	const survivorName = survivorProfile?.survivorNickname ?? "penyintas";
+	const survivorName = formatName(survivorProfile?.survivorNickname ?? "penyintas");
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top"]}>
@@ -101,31 +54,62 @@ export default function RiwayatScreen() {
 					Inilah catatan perubahan dari kebiasaan {survivorName} tiap minggu.
 				</Text>
 
-				{SESSIONS.map((item, index) => (
-					<FadeIn key={item.id} delay={index * 60}>
-						<Card style={styles.sessionCard}>
-							<View style={styles.sessionTop}>
-								<View>
-									<Text style={[type.bodyStrong, styles.sessionWhen]}>
-										{item.when}
-									</Text>
-									<View style={styles.durationRow}>
-										<Icon name="clock" size={14} color={colors.textSecondary} />
-										<Text style={[type.small, styles.durationText]}>
-											{item.duration}
-										</Text>
+				{DUMMY_SESSIONS.length === 0 ? (
+					<EmptyState
+						photo="lansia3"
+						title="Belum ada catatan"
+						description="Setelah sesi pertama, ringkasan perubahan akan muncul di sini."
+					/>
+				) : (
+					DUMMY_SESSIONS.map((item, index) => (
+						<FadeIn key={item.id} delay={index * 60}>
+							<Pressable
+								accessibilityRole="button"
+								accessibilityLabel={`Detail sesi ${item.when}`}
+								onPress={() =>
+									router.push({
+										pathname: "/sesi-detail",
+										params: { id: item.id },
+									})
+								}
+								style={({ pressed }) => [pressed && styles.pressed]}
+							>
+								<Card style={styles.sessionCard}>
+									<View style={styles.sessionTop}>
+										<View style={styles.sessionHead}>
+											<Text style={[type.bodyStrong, styles.sessionWhen]}>
+												{item.when}
+											</Text>
+											<View style={styles.durationRow}>
+												<Icon
+													name="clock"
+													size={14}
+													color={colors.textSecondary}
+												/>
+												<Text style={[type.small, styles.durationText]}>
+													{item.duration}
+												</Text>
+											</View>
+										</View>
+										<View style={styles.sessionEnd}>
+											<StatusChip tone={item.tone} label={item.status} />
+											<Icon
+												name="chevron"
+												size={18}
+												color={colors.textSecondary}
+											/>
+										</View>
 									</View>
-								</View>
-								<StatusChip tone={item.tone} label={item.status} />
-							</View>
 
-							<View style={styles.chipRow}>
-								<ContextChip icon="smile" label={`Mood: ${item.mood}`} />
-								<ContextChip icon="moon" label={`Tidur: ${item.sleep}`} />
-							</View>
-						</Card>
-					</FadeIn>
-				))}
+									<View style={styles.chipRow}>
+										<ContextChip icon="smile" label={`Mood: ${item.mood}`} />
+										<ContextChip icon="moon" label={`Tidur: ${item.sleep}`} />
+									</View>
+								</Card>
+							</Pressable>
+						</FadeIn>
+					))
+				)}
 
 				<View style={styles.note}>
 					<Icon name="info" size={16} color={colors.textSecondary} />
@@ -181,6 +165,14 @@ const styles = StyleSheet.create({
 		alignItems: "flex-start",
 		justifyContent: "space-between",
 		gap: 12,
+	},
+	sessionHead: {
+		flex: 1,
+	},
+	sessionEnd: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
 	},
 	sessionWhen: {
 		color: colors.textPrimary,

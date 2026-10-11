@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import {
 	createContext,
 	useCallback,
@@ -8,37 +9,26 @@ import {
 	useState,
 	type ReactNode,
 } from "react";
+import * as api from "./api";
 import {
+	deleteSurvivorProfile,
 	getSurvivorProfile,
 	upsertSurvivorProfile,
-	deleteSurvivorProfile,
 	type SurvivorProfile,
 	type SurvivorProfileInput,
 } from "./survivor";
 
-const USERS_KEY = "@labi/users";
-const SESSION_KEY = "@labi/session";
+const TOKEN_KEY = "labi_access_token";
+const USER_KEY = "@labi/user";
 
 export type AuthUser = {
+	id: number;
 	name: string;
 	email: string;
 };
 
-type StoredUser = AuthUser & {
-	password: string;
-};
-
-export type RegisterInput = {
-	name: string;
-	email: string;
-	password: string;
-};
-
-export type LoginInput = {
-	email: string;
-	password: string;
-};
-
+export type RegisterInput = { name: string; email: string; password: string };
+export type LoginInput = { email: string; password: string };
 export type AuthResult = { ok: true } | { ok: false; error: string };
 
 type AuthContextValue = {
@@ -55,19 +45,22 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const normalizeEmail = (email: string) => email.trim().toLowerCase();
+function toAuthUser(profile: api.UserRead): AuthUser {
+	return {
+		id: profile.id,
+		name: profile.username,
+		email: profile.email,
+	};
+}
 
-async function readUsers(): Promise<StoredUser[]> {
-	try {
-		const raw = await AsyncStorage.getItem(USERS_KEY);
-		if (!raw) {
-			return [];
-		}
-		const parsed = JSON.parse(raw);
-		return Array.isArray(parsed) ? (parsed as StoredUser[]) : [];
-	} catch {
-		return [];
-	}
+async function persistSession(token: string, user: AuthUser): Promise<void> {
+	await SecureStore.setItemAsync(TOKEN_KEY, token);
+	await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+async function clearSession(): Promise<void> {
+	await SecureStore.deleteItemAsync(TOKEN_KEY);
+	await AsyncStorage.removeItem(USER_KEY);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -82,18 +75,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 		(async () => {
 			try {
-				const sessionEmail = await AsyncStorage.getItem(SESSION_KEY);
-				if (sessionEmail) {
-					const users = await readUsers();
-					const found = users.find(
-						(entry) => entry.email === normalizeEmail(sessionEmail),
-					);
-					if (found && active) {
-						setUser({ name: found.name, email: found.email });
-						const profile = await getSurvivorProfile(found.email);
-						if (active) {
-							setSurvivorProfile(profile);
-						}
+				const token = await SecureStore.getItemAsync(TOKEN_KEY);
+				if (!token) {
+					return;
+				}
+
+				const cached = await AsyncStorage.getItem(USER_KEY);
+				if (cached && active) {
+					setUser(JSON.parse(cached) as AuthUser);
+				}
+
+				const profile = await api.me(token);
+				const nextUser = toAuthUser(profile);
+				await AsyncStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+				const survivor = await getSurvivorProfile(nextUser.email);
+
+				if (active) {
+					setUser(nextUser);
+					setSurvivorProfile(survivor);
+				}
+			} catch (error) {
+				if (error instanceof api.ApiError && error.status === 401) {
+					await clearSession();
+					if (active) {
+						setUser(null);
+						setSurvivorProfile(null);
 					}
 				}
 			} finally {
@@ -111,60 +117,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	const register = useCallback(
 		async ({ name, email, password }: RegisterInput): Promise<AuthResult> => {
 			const cleanName = name.trim();
-			const cleanEmail = normalizeEmail(email);
+			const cleanEmail = email.trim().toLowerCase();
 
 			if (!cleanName || !cleanEmail || !password) {
 				return { ok: false, error: "Semua kolom wajib diisi." };
 			}
 
-			const users = await readUsers();
-			if (users.some((entry) => entry.email === cleanEmail)) {
-				return { ok: false, error: "Email sudah terdaftar." };
+			try {
+				await api.register({
+					username: cleanName,
+					email: cleanEmail,
+					password,
+				});
+			} catch (error) {
+				return { ok: false, error: api.errorMessage(error) };
 			}
 
-			const nextUser: StoredUser = {
-				name: cleanName,
-				email: cleanEmail,
-				password,
-			};
+			try {
+				const token = await api.login({
+					username: cleanEmail,
+					password,
+				});
+				const profile = await api.me(token.access_token);
+				const nextUser = toAuthUser(profile);
 
-			await AsyncStorage.setItem(
-				USERS_KEY,
-				JSON.stringify([...users, nextUser]),
-			);
-			await AsyncStorage.setItem(SESSION_KEY, cleanEmail);
-			setSurvivorProfile(null);
-			setNeedsOnboarding(true);
-			setUser({ name: cleanName, email: cleanEmail });
-			return { ok: true };
+				await persistSession(token.access_token, nextUser);
+
+				setSurvivorProfile(null);
+				setNeedsOnboarding(true);
+				setUser(nextUser);
+				return { ok: true };
+			} catch {
+				return {
+					ok: false,
+					error:
+						"Akun berhasil dibuat, tetapi gagal masuk otomatis. Silakan masuk.",
+				};
+			}
 		},
 		[],
 	);
 
 	const login = useCallback(
 		async ({ email, password }: LoginInput): Promise<AuthResult> => {
-			const cleanEmail = normalizeEmail(email);
-			const users = await readUsers();
-			const found = users.find(
-				(entry) => entry.email === cleanEmail && entry.password === password,
-			);
+			const cleanEmail = email.trim().toLowerCase();
 
-			if (!found) {
-				return { ok: false, error: "Email atau password salah." };
+			if (!cleanEmail || !password) {
+				return { ok: false, error: "Email dan password wajib diisi." };
 			}
 
-			await AsyncStorage.setItem(SESSION_KEY, found.email);
-			const profile = await getSurvivorProfile(found.email);
-			setSurvivorProfile(profile);
-			setNeedsOnboarding(false);
-			setUser({ name: found.name, email: found.email });
-			return { ok: true };
+			try {
+				const token = await api.login({
+					username: cleanEmail,
+					password,
+				});
+				const profile = await api.me(token.access_token);
+				const nextUser = toAuthUser(profile);
+
+				await persistSession(token.access_token, nextUser);
+
+				const survivor = await getSurvivorProfile(nextUser.email);
+
+				setSurvivorProfile(survivor);
+				setNeedsOnboarding(false);
+				setUser(nextUser);
+				return { ok: true };
+			} catch (error) {
+				return { ok: false, error: api.errorMessage(error) };
+			}
 		},
 		[],
 	);
 
 	const logout = useCallback(async () => {
-		await AsyncStorage.removeItem(SESSION_KEY);
+		await clearSession();
 		setSurvivorProfile(null);
 		setNeedsOnboarding(false);
 		setUser(null);
@@ -215,16 +241,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			return { ok: false, error: "Sesi pendamping tidak ditemukan." };
 		}
 
-		const email = user.email;
-
 		try {
-			const users = await readUsers();
-			const remaining = users.filter((entry) => entry.email !== email);
-			await AsyncStorage.setItem(USERS_KEY, JSON.stringify(remaining));
-			await deleteSurvivorProfile(email);
-			await AsyncStorage.removeItem(SESSION_KEY);
+			await deleteSurvivorProfile(user.email);
+			await clearSession();
 		} catch {
-			return { ok: false, error: "Gagal menghapus akun. Coba lagi." };
+			return { ok: false, error: "Gagal menghapus data. Coba lagi." };
 		}
 
 		setSurvivorProfile(null);

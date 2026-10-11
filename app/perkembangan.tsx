@@ -10,6 +10,7 @@ import Svg, {
 	Stop,
 } from "react-native-svg";
 import { Icon } from "../components/Icon";
+import { Mascot } from "../components/mascot/Mascot";
 import { Card } from "../components/ui/Card";
 import { FadeIn } from "../components/ui/FadeIn";
 import { StatusChip } from "../components/ui/StatusChip";
@@ -23,6 +24,8 @@ import {
 	type,
 } from "../constants/theme";
 import { useAuth } from "../lib/auth";
+import { formatName } from "../lib/formatName";
+import { statusToExpression } from "../lib/mascotMood";
 
 const WEEK_LABELS = ["4 mg lalu", "3 mg lalu", "2 mg lalu", "1 mg lalu", "Minggu ini"];
 const TREND_VALUES = [2, 2.4, 2.2, 3.4, 4.1];
@@ -105,7 +108,7 @@ function TrendChart({ width, height = 168 }: { width: number; height?: number })
 export default function PerkembanganScreen() {
 	const router = useRouter();
 	const { survivorProfile } = useAuth();
-	const survivorName = survivorProfile?.survivorNickname ?? "penyintas";
+	const survivorName = formatName(survivorProfile?.survivorNickname ?? "penyintas");
 	const [chartWidth, setChartWidth] = useState(0);
 
 	return (
@@ -129,6 +132,7 @@ export default function PerkembanganScreen() {
 				<FadeIn>
 					<Card>
 						<View style={styles.summaryTop}>
+							<Mascot expression={statusToExpression("stable")} size={48} />
 							<StatusChip tone="stable" label="Perubahan ringan" />
 						</View>
 						<Text style={[type.body, styles.summaryText]}>
@@ -224,6 +228,9 @@ const styles = StyleSheet.create({
 		paddingBottom: spacing.xxxl,
 	},
 	summaryTop: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 12,
 		marginBottom: 12,
 	},
 	summaryText: {

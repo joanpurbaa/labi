@@ -6,11 +6,9 @@ import { PrimaryButton } from "../../components/PrimaryButton";
 import { TextField } from "../../components/TextField";
 import { colors, radii } from "../../constants/theme";
 import { useAuth } from "../../lib/auth";
-import { useFocusGuard } from "../../lib/focusGuard";
 
 export default function LoginScreen() {
 	const { login } = useAuth();
-	const guard = useFocusGuard<"email" | "password">();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -49,9 +47,6 @@ export default function LoginScreen() {
 			subtitle="Lanjutkan latihan komunikasimu bersama LABI."
 		>
 			<TextField
-				ref={guard.setRef("email")}
-				onFocus={guard.onFocus("email")}
-				onPressIn={guard.onPressIn("email")}
 				label="Email"
 				value={email}
 				onChangeText={(value) => {
@@ -68,9 +63,6 @@ export default function LoginScreen() {
 				returnKeyType="next"
 			/>
 			<TextField
-				ref={guard.setRef("password")}
-				onFocus={guard.onFocus("password")}
-				onPressIn={guard.onPressIn("password")}
 				label="Password"
 				value={password}
 				onChangeText={(value) => {
