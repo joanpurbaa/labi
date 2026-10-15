@@ -1,5 +1,13 @@
 import { router } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+	ActivityIndicator,
+	Pressable,
+	ScrollView,
+	StyleSheet,
+	Text,
+	View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "../../components/Icon";
 import { Button } from "../../components/ui/Button";
@@ -14,19 +22,61 @@ import {
 	spacing,
 	type,
 } from "../../constants/theme";
+import * as api from "../../lib/api";
+import type { SessionHistoryItem } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
-import {
-	DUMMY_SESSIONS,
-	DUMMY_TOPICS,
-	WEEKLY_PROGRESS,
-} from "../../lib/dummyData";
+import { DUMMY_TOPICS } from "../../lib/dummyData";
 import { formatName } from "../../lib/formatName";
+import {
+	formatSessionDate,
+	recallLabel,
+	recallTone,
+} from "../../lib/sessionDisplay";
+
+const WEEKLY_TARGET = 4;
+const TONE_TO_BADGE = {
+	stable: "leaf",
+	watch: "accent",
+	consult: "orange",
+} as const;
 
 export default function SesiScreen() {
-	const { survivorProfile } = useAuth();
+	const { token, survivorProfile } = useAuth();
 	const survivorName = formatName(survivorProfile?.survivorNickname ?? "penyintas");
-	const recent = DUMMY_SESSIONS.slice(0, 3);
-	const progress = WEEKLY_PROGRESS.done / WEEKLY_PROGRESS.target;
+
+	const [sessions, setSessions] = useState<SessionHistoryItem[] | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		let active = true;
+		if (!token) {
+			return;
+		}
+		(async () => {
+			try {
+				const loaded = await api.listSessions(token, {
+					page: 1,
+					page_size: 20,
+				});
+				if (active) {
+					setSessions(loaded.data);
+				}
+			} catch (err) {
+				if (active) {
+					setError(api.errorMessage(err));
+				}
+			}
+		})();
+		return () => {
+			active = false;
+		};
+	}, [token]);
+
+	const recent = (sessions ?? []).slice(0, 3);
+	const doneCount = (sessions ?? []).filter(
+		(session) => session.completed_at,
+	).length;
+	const progress = Math.min(doneCount / WEEKLY_TARGET, 1);
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top"]}>
@@ -44,21 +94,21 @@ export default function SesiScreen() {
 				<FadeIn delay={60}>
 					<Card variant="hero" style={styles.heroCard}>
 						<View style={styles.heroTop}>
-							<ProgressRing progress={progress} size={112}>
-								<Text style={[type.h1, styles.ringValue]}>
-									{WEEKLY_PROGRESS.done}
+							<ProgressRing progress={progress}>
+								<Text style={[type.display, styles.ringValue]}>
+									{doneCount}
 								</Text>
 								<Text style={[type.small, styles.ringLabel]}>
-									dari {WEEKLY_PROGRESS.target}
+									dari {WEEKLY_TARGET}
 								</Text>
 							</ProgressRing>
 							<View style={styles.heroSide}>
 								<Text style={[type.bodyStrong, styles.heroSideTitle]}>
-									Target {WEEKLY_PROGRESS.label}
+									Sesi selesai
 								</Text>
-								<Text style={[type.body, styles.heroSideText]}>
-									{WEEKLY_PROGRESS.done} dari {WEEKLY_PROGRESS.target} sesi
-									selesai. Satu sesi lagi untuk genap.
+								<Text style={[type.small, styles.heroSideText]}>
+									{doneCount} dari {WEEKLY_TARGET} sesi mingguan sudah
+									tersimpan.
 								</Text>
 							</View>
 						</View>
@@ -66,7 +116,7 @@ export default function SesiScreen() {
 							label={`Mulai sesi bersama ${survivorName}`}
 							size="large"
 							fullWidth
-							onPress={() => router.push("/sesi-bercerita")}
+							onPress={() => router.push("/sesi-pilih")}
 							style={styles.heroButton}
 						/>
 					</Card>
@@ -87,15 +137,28 @@ export default function SesiScreen() {
 								<Text style={[type.small, styles.link]}>Lihat semua</Text>
 							</Pressable>
 						</View>
+						{sessions === null && !error ? (
+							<View style={styles.loadingRow}>
+								<ActivityIndicator color={colors.primary} />
+							</View>
+						) : null}
+						{error ? (
+							<Text style={[type.small, styles.emptyText]}>{error}</Text>
+						) : null}
+						{sessions && recent.length === 0 ? (
+							<Text style={[type.small, styles.emptyText]}>
+								Belum ada sesi tersimpan.
+							</Text>
+						) : null}
 						{recent.map((session) => (
 							<Pressable
 								key={session.id}
 								accessibilityRole="button"
-								accessibilityLabel={`Detail sesi ${session.when}`}
+								accessibilityLabel={`Detail sesi ${formatSessionDate(session.completed_at)}`}
 								onPress={() =>
 									router.push({
 										pathname: "/sesi-detail",
-										params: { id: session.id },
+										params: { id: String(session.id) },
 									})
 								}
 								style={({ pressed }) => [pressed && styles.pressed]}
@@ -105,20 +168,19 @@ export default function SesiScreen() {
 										<IconBadge
 											icon="session"
 											tone={
-												session.tone === "stable"
-													? "leaf"
-													: session.tone === "watch"
-														? "accent"
-														: "orange"
+												TONE_TO_BADGE[
+													recallTone(session.iu_recall_percent, session.status)
+												]
 											}
 											size={44}
 										/>
 										<View style={styles.sessionBody}>
 											<Text style={[type.bodyStrong, styles.sessionWhen]}>
-												{session.when}
+												{formatSessionDate(session.completed_at)}
 											</Text>
 											<Text style={[type.small, styles.sessionMeta]}>
-												{session.duration} · Mood: {session.mood}
+												{session.story_title ?? "Cerita"} ·{" "}
+												{recallLabel(session.iu_recall_percent)}
 											</Text>
 										</View>
 										<Icon
@@ -287,6 +349,15 @@ const styles = StyleSheet.create({
 	noteText: {
 		color: colors.textSecondary,
 		flexShrink: 1,
+	},
+	loadingRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+		paddingVertical: 12,
+	},
+	emptyText: {
+		color: colors.textSecondary,
 	},
 	pressed: {
 		opacity: 0.7,

@@ -1,22 +1,19 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
+import { Alert } from "react-native";
 import {
 	createContext,
 	useCallback,
 	useContext,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 	type ReactNode,
 } from "react";
 import * as api from "./api";
-import {
-	deleteSurvivorProfile,
-	getSurvivorProfile,
-	upsertSurvivorProfile,
-	type SurvivorProfile,
-	type SurvivorProfileInput,
-} from "./survivor";
+import { clearParticipant } from "./participant";
+import type { SurvivorProfile, SurvivorProfileInput } from "./survivor";
 
 const TOKEN_KEY = "labi_access_token";
 const USER_KEY = "@labi/user";
@@ -25,6 +22,7 @@ export type AuthUser = {
 	id: number;
 	name: string;
 	email: string;
+	role: string;
 };
 
 export type RegisterInput = { name: string; email: string; password: string };
@@ -33,6 +31,7 @@ export type AuthResult = { ok: true } | { ok: false; error: string };
 
 type AuthContextValue = {
 	user: AuthUser | null;
+	token: string | null;
 	isReady: boolean;
 	needsOnboarding: boolean;
 	survivorProfile: SurvivorProfile | null;
@@ -50,7 +49,20 @@ function toAuthUser(profile: api.UserRead): AuthUser {
 		id: profile.id,
 		name: profile.username,
 		email: profile.email,
+		role: profile.role,
 	};
+}
+
+async function fetchSurvivorProfile(
+	token: string,
+	email: string,
+): Promise<{ profile: SurvivorProfile | null; needsOnboarding: boolean }> {
+	try {
+		const profile = await api.getSurvivorProfile(token, email);
+		return { profile, needsOnboarding: profile === null };
+	} catch {
+		return { profile: null, needsOnboarding: false };
+	}
 }
 
 async function persistSession(token: string, user: AuthUser): Promise<void> {
@@ -65,41 +77,47 @@ async function clearSession(): Promise<void> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
 	const [user, setUser] = useState<AuthUser | null>(null);
+	const [token, setToken] = useState<string | null>(null);
 	const [isReady, setIsReady] = useState(false);
 	const [needsOnboarding, setNeedsOnboarding] = useState(false);
 	const [survivorProfile, setSurvivorProfile] =
 		useState<SurvivorProfile | null>(null);
+	const unauthorizedHandled = useRef(false);
 
 	useEffect(() => {
 		let active = true;
 
 		(async () => {
 			try {
-				const token = await SecureStore.getItemAsync(TOKEN_KEY);
-				if (!token) {
+				const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+				if (!storedToken) {
 					return;
 				}
 
-				const cached = await AsyncStorage.getItem(USER_KEY);
-				if (cached && active) {
-					setUser(JSON.parse(cached) as AuthUser);
-				}
-
-				const profile = await api.me(token);
+				const profile = await api.me(storedToken);
 				const nextUser = toAuthUser(profile);
 				await AsyncStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-				const survivor = await getSurvivorProfile(nextUser.email);
-
 				if (active) {
 					setUser(nextUser);
-					setSurvivorProfile(survivor);
+					setToken(storedToken);
+				}
+
+				const survivor = await fetchSurvivorProfile(
+					storedToken,
+					nextUser.email,
+				);
+				if (active) {
+					setSurvivorProfile(survivor.profile);
+					setNeedsOnboarding(survivor.needsOnboarding);
 				}
 			} catch (error) {
 				if (error instanceof api.ApiError && error.status === 401) {
 					await clearSession();
 					if (active) {
 						setUser(null);
+						setToken(null);
 						setSurvivorProfile(null);
+						setNeedsOnboarding(false);
 					}
 				}
 			} finally {
@@ -128,21 +146,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 					username: cleanName,
 					email: cleanEmail,
 					password,
+					role: api.CAREGIVER_ROLE,
 				});
 			} catch (error) {
 				return { ok: false, error: api.errorMessage(error) };
 			}
 
 			try {
-				const token = await api.login({
+				const session = await api.login({
 					username: cleanEmail,
 					password,
 				});
-				const profile = await api.me(token.access_token);
+				const profile = await api.me(session.access_token);
 				const nextUser = toAuthUser(profile);
 
-				await persistSession(token.access_token, nextUser);
+				await persistSession(session.access_token, nextUser);
 
+				setToken(session.access_token);
 				setSurvivorProfile(null);
 				setNeedsOnboarding(true);
 				setUser(nextUser);
@@ -167,19 +187,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			}
 
 			try {
-				const token = await api.login({
+				const session = await api.login({
 					username: cleanEmail,
 					password,
 				});
-				const profile = await api.me(token.access_token);
+				const profile = await api.me(session.access_token);
 				const nextUser = toAuthUser(profile);
 
-				await persistSession(token.access_token, nextUser);
+				await persistSession(session.access_token, nextUser);
 
-				const survivor = await getSurvivorProfile(nextUser.email);
+				const survivor = await fetchSurvivorProfile(
+					session.access_token,
+					nextUser.email,
+				);
 
-				setSurvivorProfile(survivor);
-				setNeedsOnboarding(false);
+				setToken(session.access_token);
+				setSurvivorProfile(survivor.profile);
+				setNeedsOnboarding(survivor.needsOnboarding);
 				setUser(nextUser);
 				return { ok: true };
 			} catch (error) {
@@ -191,6 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 	const logout = useCallback(async () => {
 		await clearSession();
+		setToken(null);
 		setSurvivorProfile(null);
 		setNeedsOnboarding(false);
 		setUser(null);
@@ -198,7 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 	const saveSurvivorProfile = useCallback(
 		async (input: SurvivorProfileInput): Promise<AuthResult> => {
-			if (!user) {
+			if (!user || !token) {
 				return { ok: false, error: "Sesi pendamping tidak ditemukan." };
 			}
 
@@ -213,27 +238,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				};
 			}
 
-			const profile: SurvivorProfile = {
-				...input,
-				survivorNickname: nickname,
-				companionEmail: user.email,
-				updatedAt: new Date().toISOString(),
-			};
-
 			try {
-				await upsertSurvivorProfile(profile);
-			} catch {
-				return {
-					ok: false,
-					error: "Gagal menyimpan data. Coba lagi tanpa menutup halaman.",
-				};
+				const profile = await api.upsertSurvivorProfile(
+					token,
+					{ ...input, survivorNickname: nickname },
+					user.email,
+				);
+				setSurvivorProfile(profile);
+				setNeedsOnboarding(false);
+				return { ok: true };
+			} catch (error) {
+				return { ok: false, error: api.errorMessage(error) };
 			}
-
-			setSurvivorProfile(profile);
-			setNeedsOnboarding(false);
-			return { ok: true };
 		},
-		[user],
+		[user, token],
 	);
 
 	const deleteAccount = useCallback(async (): Promise<AuthResult> => {
@@ -242,21 +260,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		}
 
 		try {
-			await deleteSurvivorProfile(user.email);
+			if (token) {
+				await api.deleteSurvivorProfile(token);
+			}
+			await clearParticipant(user.id);
 			await clearSession();
 		} catch {
 			return { ok: false, error: "Gagal menghapus data. Coba lagi." };
 		}
 
+		setToken(null);
 		setSurvivorProfile(null);
 		setNeedsOnboarding(false);
 		setUser(null);
 		return { ok: true };
+	}, [user, token]);
+
+	useEffect(() => {
+		if (!user) return;
+		const unregister = api.registerUnauthorizedHandler(() => {
+			if (unauthorizedHandled.current) return;
+			unauthorizedHandled.current = true;
+			Alert.alert("Sesi berakhir", "Silakan masuk kembali untuk melanjutkan.");
+			void logout();
+		});
+		return unregister;
+	}, [user, logout]);
+
+	useEffect(() => {
+		if (!user) unauthorizedHandled.current = false;
 	}, [user]);
 
 	const value = useMemo(
 		() => ({
 			user,
+			token,
 			isReady,
 			needsOnboarding,
 			survivorProfile,
@@ -268,6 +306,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		}),
 		[
 			user,
+			token,
 			isReady,
 			needsOnboarding,
 			survivorProfile,

@@ -1,6 +1,13 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+	ActivityIndicator,
+	Pressable,
+	ScrollView,
+	StyleSheet,
+	Text,
+	View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, {
 	Circle,
@@ -13,8 +20,8 @@ import { Icon } from "../components/Icon";
 import { Mascot } from "../components/mascot/Mascot";
 import { Card } from "../components/ui/Card";
 import { FadeIn } from "../components/ui/FadeIn";
-import { StatusChip } from "../components/ui/StatusChip";
 import { StatTile } from "../components/ui/StatTile";
+import { StatusChip } from "../components/ui/StatusChip";
 import {
 	colors,
 	layout,
@@ -23,12 +30,16 @@ import {
 	spacing,
 	type,
 } from "../constants/theme";
+import * as api from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { formatName } from "../lib/formatName";
+import {
+	recallLabel,
+	recallTone,
+} from "../lib/sessionDisplay";
 import { statusToExpression } from "../lib/mascotMood";
-
-const WEEK_LABELS = ["4 mg lalu", "3 mg lalu", "2 mg lalu", "1 mg lalu", "Minggu ini"];
-const TREND_VALUES = [2, 2.4, 2.2, 3.4, 4.1];
+import { getParticipantId } from "../lib/participant";
+import { WEEKLY_SUMMARY } from "../lib/dummyData";
 
 type Point = { x: number; y: number };
 
@@ -51,24 +62,33 @@ function smoothPath(points: Point[]): string {
 	return commands.join(" ");
 }
 
-function TrendChart({ width, height = 168 }: { width: number; height?: number }) {
+function TrendChart({
+	width,
+	values,
+	height = 168,
+}: {
+	width: number;
+	values: number[];
+	height?: number;
+}) {
 	const padX = 10;
 	const padTop = 18;
 	const padBottom = 30;
 	const innerW = Math.max(width - padX * 2, 1);
 	const innerH = Math.max(height - padTop - padBottom, 1);
-	const max = Math.max(...TREND_VALUES);
-	const min = Math.min(...TREND_VALUES);
+	const max = Math.max(...values);
+	const min = Math.min(...values);
 	const range = Math.max(max - min, 1);
 
-	const points: Point[] = TREND_VALUES.map((value, index) => ({
-		x: padX + (innerW * index) / (TREND_VALUES.length - 1),
+	const points: Point[] = values.map((value, index) => ({
+		x: padX + (innerW * index) / Math.max(values.length - 1, 1),
 		y: padTop + innerH * (1 - (value - min) / range),
 	}));
 
 	const line = smoothPath(points);
 	const last = points[points.length - 1];
-	const area = `${line} L ${last.x} ${padTop + innerH} L ${points[0].x} ${padTop + innerH} Z`;
+	const first = points[0];
+	const area = `${line} L ${last.x} ${padTop + innerH} L ${first.x} ${padTop + innerH} Z`;
 
 	return (
 		<Svg width={width} height={height}>
@@ -107,9 +127,60 @@ function TrendChart({ width, height = 168 }: { width: number; height?: number })
 
 export default function PerkembanganScreen() {
 	const router = useRouter();
-	const { survivorProfile } = useAuth();
+	const { token, user, survivorProfile } = useAuth();
 	const survivorName = formatName(survivorProfile?.survivorNickname ?? "penyintas");
 	const [chartWidth, setChartWidth] = useState(0);
+	const [trend, setTrend] = useState<api.ParticipantTrendRead | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [ready, setReady] = useState(false);
+	const [showExample, setShowExample] = useState(false);
+	useEffect(() => {
+		let active = true;
+		const controller = new AbortController();
+		if (!token || !user) {
+			return;
+		}
+		(async () => {
+			try {
+				const participantId = await getParticipantId(user.id);
+				if (participantId === null) {
+					if (active) setShowExample(true);
+					return;
+				}
+				const completed = await api.listSessions(token, {
+					participant_id: participantId,
+					status: "completed",
+					page: 1,
+					page_size: 1,
+					signal: controller.signal,
+				});
+				if (completed.data.length === 0) {
+					if (active) setShowExample(true);
+					return;
+				}
+				const loaded = await api.getParticipantTrend(token, participantId, controller.signal);
+				if (active) {
+					setTrend(loaded);
+				}
+			} catch (err) {
+				if (active) {
+					setError(api.errorMessage(err));
+				}
+			} finally {
+				if (active) {
+					setReady(true);
+				}
+			}
+		})();
+		return () => {
+			active = false;
+			controller.abort();
+		};
+	}, [token, user]);
+
+	const values = (trend?.series ?? []).map(
+		(point) => point.iu_recall_percent ?? 0,
+	);
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top"]}>
@@ -129,72 +200,133 @@ export default function PerkembanganScreen() {
 				contentContainerStyle={styles.content}
 				showsVerticalScrollIndicator={false}
 			>
-				<FadeIn>
-					<Card>
-						<View style={styles.summaryTop}>
-							<Mascot expression={statusToExpression("stable")} size={48} />
-							<StatusChip tone="stable" label="Perubahan ringan" />
-						</View>
-						<Text style={[type.body, styles.summaryText]}>
-							Dibanding minggu-minggu sebelumnya, {survivorName} bercerita
-							sedikit lebih panjang. Perubahannya ringan dan masih dalam
-							kebiasaan yang wajar.
-						</Text>
-					</Card>
-				</FadeIn>
-
-				<FadeIn delay={60}>
-					<View style={styles.statsRow}>
-						<StatTile label="Sesi tercatat" value="5" icon="history" tone="primary" />
-						<StatTile label="Rata-rata" value="3 menit" icon="clock" tone="accent" />
+				{!ready ? (
+					<View style={styles.loading}>
+						<ActivityIndicator color={colors.primary} />
 					</View>
-				</FadeIn>
+				) : null}
 
-				<FadeIn delay={120}>
-					<Card style={styles.chartCard}>
-						<Text style={[type.bodyStrong, styles.chartTitle]}>
-							Perubahan dari kebiasaan {survivorName}
-						</Text>
-						<Text style={[type.small, styles.chartHint]}>
-							Semakin ke atas, semakin banyak ia bercerita.
-						</Text>
+				{error ? (
+					<View style={styles.error}>
+						<Icon name="info" size={18} color={colors.danger} />
+						<Text style={[type.body, styles.errorText]}>{error}</Text>
+					</View>
+				) : null}
 
-						<View
-							style={styles.chartArea}
-							onLayout={(event) =>
-								setChartWidth(event.nativeEvent.layout.width)
-							}
-						>
-							{chartWidth > 0 ? <TrendChart width={chartWidth} /> : null}
-						</View>
+				{ready && showExample ? (
+					<FadeIn>
+						<Card style={styles.exampleCard}>
+							<Text style={[type.small, styles.exampleLabel]}>Contoh tampilan</Text>
+							<Text style={[type.bodyStrong, styles.chartTitle]}>{WEEKLY_SUMMARY.title}</Text>
+							<Text style={[type.body, styles.summaryText]}>{WEEKLY_SUMMARY.body}</Text>
+							<Text style={[type.small, styles.exampleHint]}>Catatan sesi dan perubahan akan muncul setelah sesi pertama selesai.</Text>
+						</Card>
+					</FadeIn>
+				) : null}
 
-						<View style={styles.axisRow}>
-							{WEEK_LABELS.map((label) => (
-								<Text key={label} style={[type.small, styles.axisLabel]}>
-									{label}
+				{ready && !error && !showExample ? (
+					<>
+						<FadeIn>
+							<Card>
+								<View style={styles.summaryTop}>
+									<Mascot
+										expression={statusToExpression(
+											recallTone(trend?.latest?.iu_recall_percent ?? null),
+										)}
+										size={48}
+									/>
+									<StatusChip
+										tone={recallTone(trend?.latest?.iu_recall_percent ?? null)}
+										label={recallLabel(trend?.latest?.iu_recall_percent ?? null)}
+									/>
+								</View>
+								<Text style={[type.body, styles.summaryText]}>
+									{summaryMessage(survivorName, trend)}
 								</Text>
-							))}
-						</View>
+							</Card>
+						</FadeIn>
 
-						<View style={styles.legendRow}>
-							<View style={styles.legendDot} />
-							<Text style={[type.small, styles.legendText]}>
-								Titik oranye menandai sesi terbaru.
+						<FadeIn delay={60}>
+							<View style={styles.statsRow}>
+								<StatTile
+									label="Sesi tercatat"
+									value={String(trend?.session_count ?? 0)}
+									icon="history"
+									tone="primary"
+								/>
+								<StatTile
+									label="Ingatan terakhir"
+									value={
+										typeof trend?.latest?.iu_recall_percent === "number"
+											? `${Math.round(trend.latest.iu_recall_percent)}%`
+											: "—"
+									}
+									icon="clock"
+									tone="accent"
+								/>
+							</View>
+						</FadeIn>
+
+						<FadeIn delay={120}>
+							<Card style={styles.chartCard}>
+								<Text style={[type.bodyStrong, styles.chartTitle]}>
+									Perubahan dari kebiasaan {survivorName}
+								</Text>
+								<Text style={[type.small, styles.chartHint]}>
+									Semakin ke atas, semakin banyak bagian cerita yang diingat.
+								</Text>
+
+								{values.length >= 2 ? (
+									<View
+										style={styles.chartArea}
+										onLayout={(event) =>
+											setChartWidth(event.nativeEvent.layout.width)
+										}
+									>
+										{chartWidth > 0 ? (
+											<TrendChart width={chartWidth} values={values} />
+										) : null}
+									</View>
+								) : (
+									<Text style={[type.body, styles.emptyChart]}>
+										Belum cukup sesi untuk menggambar grafik. Butuh minimal
+										dua sesi selesai.
+									</Text>
+								)}
+							</Card>
+						</FadeIn>
+
+						<View style={styles.note}>
+							<Icon name="info" size={16} color={colors.textSecondary} />
+							<Text style={[type.small, styles.noteText]}>
+								Ringkasan ini membantu melihat perubahan dari sesi ke sesi.
 							</Text>
 						</View>
-					</Card>
-				</FadeIn>
-
-				<View style={styles.note}>
-					<Icon name="info" size={16} color={colors.textSecondary} />
-					<Text style={[type.small, styles.noteText]}>
-						Ini bukan diagnosis. Bawa ringkasan ini saat berkonsultasi dengan
-						dokter.
-					</Text>
-				</View>
+					</>
+				) : null}
 			</ScrollView>
 		</SafeAreaView>
 	);
+}
+
+function summaryMessage(
+	name: string,
+	trend: api.ParticipantTrendRead | null,
+): string {
+	const count = trend?.session_count ?? 0;
+	const latest = trend?.latest?.iu_recall_percent ?? null;
+	const baseline = trend?.baseline?.iu_recall_percent ?? null;
+	if (count < 2 || latest === null || baseline === null) {
+		return `Belum cukup data untuk melihat perubahan ${name}. Ajak bercerita beberapa kali lagi.`;
+	}
+	const delta = latest - baseline;
+	if (delta > 3) {
+		return `Dibanding awal, ${name} mengingat bagian cerita lebih banyak. Perubahannya ringan dan masih wajar.`;
+	}
+	if (delta < -3) {
+		return `Ingatan ${name} sedikit menurun dibanding awal. Tetap dampingi dengan sabar.`;
+	}
+	return `Ingatan ${name} cenderung stabil dibanding awal.`;
 }
 
 const styles = StyleSheet.create({
@@ -244,6 +376,17 @@ const styles = StyleSheet.create({
 	chartCard: {
 		marginTop: 12,
 	},
+	exampleCard: {
+		marginTop: spacing.lg,
+	},
+	exampleLabel: {
+		color: colors.primary,
+		marginBottom: spacing.sm,
+	},
+	exampleHint: {
+		color: colors.textSecondary,
+		marginTop: spacing.lg,
+	},
 	chartTitle: {
 		color: colors.textPrimary,
 	},
@@ -254,30 +397,9 @@ const styles = StyleSheet.create({
 	chartArea: {
 		marginTop: 16,
 	},
-	axisRow: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		marginTop: 4,
-	},
-	axisLabel: {
+	emptyChart: {
 		color: colors.textSecondary,
-	},
-	legendRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
-		marginTop: 12,
-	},
-	legendDot: {
-		width: 12,
-		height: 12,
-		borderRadius: 6,
-		backgroundColor: colors.accent,
-		borderWidth: 2,
-		borderColor: colors.primary,
-	},
-	legendText: {
-		color: colors.textSecondary,
+		marginTop: 16,
 	},
 	note: {
 		flexDirection: "row",
@@ -291,6 +413,23 @@ const styles = StyleSheet.create({
 	noteText: {
 		color: colors.textSecondary,
 		flexShrink: 1,
+	},
+	loading: {
+		paddingVertical: spacing.xxxl,
+		alignItems: "center",
+	},
+	error: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 8,
+		padding: 14,
+		borderRadius: radii.cardSmall,
+		backgroundColor: colors.dangerSoft,
+		marginBottom: spacing.lg,
+	},
+	errorText: {
+		flex: 1,
+		color: colors.danger,
 	},
 	pressed: {
 		opacity: 0.7,

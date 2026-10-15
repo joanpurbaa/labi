@@ -20,7 +20,7 @@ import {
 } from "../lib/dummyData";
 
 const ROUTES: Record<string, Href> = {
-	n1: "/sesi-bercerita",
+	n1: "/sesi-pilih",
 	n2: "/perkembangan",
 	n3: "/laporan-dokter",
 	n4: "/panduan",

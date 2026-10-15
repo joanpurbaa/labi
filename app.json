@@ -39,7 +39,14 @@
         }
       ],
       "expo-image",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Izinkan LABI mengakses mikrofon untuk merekam cerita penyintas."
+        }
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

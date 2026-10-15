@@ -1,9 +1,88 @@
 export { login, me, register } from "./auth";
-export { API_BASE_URL } from "./client";
-export { ApiError, errorMessage } from "./errors";
+export { API_BASE_URL, health, registerUnauthorizedHandler, request, upload } from "./client";
+export {
+	ApiError,
+	errorFields,
+	errorMessage,
+	isAbortError,
+	isAuthError,
+} from "./errors";
+export {
+	createParticipant,
+	getParticipant,
+	getParticipantTrend,
+	listParticipants,
+} from "./participants";
 export type {
+	CreateSessionInput,
+	SessionListParams,
+	UploadRecordingOptions,
+} from "./sessions";
+export {
+	applyIuSuggestions,
+	cancelSession,
+	completeSession,
+	createSession,
+	getAnalysis,
+	getRecording,
+	getResult,
+	getSession,
+	getTranscript,
+	listSessions,
+	putAssessment,
+	startAnalysis,
+	uploadRecording,
+	upsertTranscript,
+} from "./sessions";
+export {
+	deleteSurvivorProfile,
+	getSurvivorProfile,
+	upsertSurvivorProfile,
+} from "./survivor";
+export { getStory, listStories } from "./stories";
+export { CAREGIVER_ROLE } from "./types";
+export type {
+	AgeRange,
+	AnalysisRead,
+	AnalysisRunIn,
+	AssessmentItemIn,
+	AssessmentRead,
+	AssessmentStatus,
+	AssessmentUpsert,
+	CommunicationGoal,
+	CompleteIn,
+	CompleteOut,
+	CompleteResult,
+	ConversationTopic,
+	IURead,
+	InstructionPreference,
+	IuSuggestionRead,
 	LoginPayload,
+	Pagination,
+	PaginatedSessions,
+	ParticipantCreate,
+	ParticipantRead,
+	ParticipantTrendRead,
+	PracticeMode,
+	PreferredSessionDuration,
+	PrimaryLanguage,
+	RecordingRead,
 	RegisterPayload,
+	ResultItemRead,
+	ResultRead,
+	SessionCreate,
+	SessionHistoryItem,
+	SessionRead,
+	SilentPauseRead,
+	SpeechMetricsRead,
+	StoryDetail,
+	StoryListItem,
+	SurvivorProfileRead,
+	SurvivorProfileUpsert,
 	TokenResponse,
+	TranscriptRead,
+	TranscriptUpsert,
+	TrendDelta,
+	TrendPoint,
 	UserRead,
 } from "./types";

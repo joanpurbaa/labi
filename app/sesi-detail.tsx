@@ -1,5 +1,13 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+	ActivityIndicator,
+	Pressable,
+	ScrollView,
+	StyleSheet,
+	Text,
+	View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
 import { Mascot } from "../components/mascot/Mascot";
@@ -15,13 +23,66 @@ import {
 	spacing,
 	type,
 } from "../constants/theme";
-import { DUMMY_SESSIONS } from "../lib/dummyData";
+import * as api from "../lib/api";
+import type { ResultRead, SessionRead } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { statusToExpression } from "../lib/mascotMood";
+import {
+	formatSessionDate,
+	recallLabel,
+	recallTone,
+	resultItemLabel,
+	resultItemTone,
+} from "../lib/sessionDisplay";
 
 export default function SesiDetailScreen() {
 	const router = useRouter();
+	const { token } = useAuth();
 	const { id } = useLocalSearchParams<{ id?: string }>();
-	const session = DUMMY_SESSIONS.find((entry) => entry.id === id);
+	const numericSessionId = Number(id);
+
+	const [session, setSession] = useState<SessionRead | null>(null);
+	const [result, setResult] = useState<ResultRead | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [ready, setReady] = useState(false);
+
+	const hasValidId = Boolean(token) && Number.isFinite(numericSessionId);
+
+	useEffect(() => {
+		if (!token || !Number.isFinite(numericSessionId)) {
+			return;
+		}
+		let active = true;
+		(async () => {
+			try {
+				const loaded = await api.getSession(token, numericSessionId);
+				if (!active) {
+					return;
+				}
+				setSession(loaded);
+				if (loaded.status !== "completed") {
+					return;
+				}
+				const resultData = await api
+					.getResult(token, numericSessionId)
+					.catch(() => null);
+				if (active && resultData) {
+					setResult(resultData);
+				}
+			} catch (err) {
+				if (active) {
+					setError(api.errorMessage(err));
+				}
+			} finally {
+				if (active) {
+					setReady(true);
+				}
+			}
+		})();
+		return () => {
+			active = false;
+		};
+	}, [token, numericSessionId]);
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top"]}>
@@ -41,96 +102,130 @@ export default function SesiDetailScreen() {
 				contentContainerStyle={styles.content}
 				showsVerticalScrollIndicator={false}
 			>
+				{!hasValidId ? (
+					<EmptyState
+						title="Sesi tidak ditemukan"
+						description="Catatan sesi ini tidak tersedia. Kembali ke Riwayat untuk memilih sesi lain."
+					/>
+				) : null}
+
+				{error ? (
+					<View style={styles.error}>
+						<Icon name="info" size={18} color={colors.danger} />
+						<Text style={[type.body, styles.errorText]}>{error}</Text>
+					</View>
+				) : null}
+
+				{hasValidId && !ready && !error ? (
+					<View style={styles.loading}>
+						<ActivityIndicator color={colors.primary} />
+					</View>
+				) : null}
+
 				{session ? (
 					<>
 						<FadeIn>
 							<Card>
 								<View style={styles.topRow}>
 									<Mascot
-										expression={statusToExpression(session.tone)}
+										expression={statusToExpression(
+											recallTone(result?.iu_recall_percent, session.status),
+										)}
 										size={48}
 									/>
 									<View style={styles.dateBlock}>
 										<Text style={[type.bodyStrong, styles.when]}>
-											{session.when}
+											{formatSessionDate(session.created_at)}
 										</Text>
 										<Text style={[type.small, styles.date]}>
-											{session.date}
+											{result?.story_title ?? "Cerita"}
 										</Text>
 									</View>
-									<StatusChip tone={session.tone} label={session.status} />
-								</View>
-								<View style={styles.durationRow}>
-									<Icon name="clock" size={14} color={colors.textSecondary} />
-									<Text style={[type.small, styles.durationText]}>
-										Durasi {session.duration}
-									</Text>
+									<StatusChip
+										tone={recallTone(result?.iu_recall_percent, session.status)}
+										label={recallLabel(result?.iu_recall_percent)}
+									/>
 								</View>
 							</Card>
 						</FadeIn>
 
-						<FadeIn delay={60}>
-							<View style={styles.chipRow}>
-								<View style={styles.chip}>
-									<Icon name="smile" size={14} color={colors.textSecondary} />
-									<Text style={[type.small, styles.chipText]}>
-										Mood: {session.mood}
-									</Text>
-								</View>
-								<View style={styles.chip}>
-									<Icon name="moon" size={14} color={colors.textSecondary} />
-									<Text style={[type.small, styles.chipText]}>
-										Tidur: {session.sleep}
-									</Text>
-								</View>
-								<View style={styles.chip}>
-									<Icon
-										name="calendar"
-										size={14}
-										color={colors.textSecondary}
-									/>
-									<Text style={[type.small, styles.chipText]}>
-										{session.activity}
-									</Text>
-								</View>
-							</View>
-						</FadeIn>
+						{result ? (
+							<>
+								<FadeIn delay={60}>
+									<View style={styles.percentCard}>
+										<Text style={[type.display, styles.percent]}>
+											{Math.round(result.iu_recall_percent ?? 0)}%
+										</Text>
+										<Text style={[type.small, styles.percentLabel]}>
+											bagian cerita diingat
+										</Text>
+									</View>
+								</FadeIn>
 
-						<FadeIn delay={100}>
-							<View style={styles.section}>
-								<Text style={[type.h3, styles.sectionTitle]}>Catatan sesi</Text>
-								<Card>
-									<Text style={[type.body, styles.summary]}>
-										{session.summary}
-									</Text>
-								</Card>
-							</View>
-						</FadeIn>
-
-						<FadeIn delay={140}>
-							<View style={styles.section}>
-								<Text style={[type.h3, styles.sectionTitle]}>
-									Yang terlihat
-								</Text>
-								<Card>
-									{session.highlights.map((highlight, index) => (
-										<View
-											key={highlight}
-											style={[
-												styles.highlightRow,
-												index < session.highlights.length - 1 &&
-													styles.highlightDivider,
-											]}
-										>
-											<Icon name="check" size={18} color={colors.primary} />
-											<Text style={[type.body, styles.highlightText]}>
-												{highlight}
+								<FadeIn delay={90}>
+									<View style={styles.chipRow}>
+										<View style={styles.chip}>
+											<Icon
+												name="check"
+												size={14}
+												color={colors.textSecondary}
+											/>
+											<Text style={[type.small, styles.chipText]}>
+												Diingat: {result.met_count}
 											</Text>
 										</View>
-									))}
+										<View style={styles.chip}>
+											<Icon name="info" size={14} color={colors.textSecondary} />
+											<Text style={[type.small, styles.chipText]}>
+												Belum: {result.not_met_count}
+											</Text>
+										</View>
+										<View style={styles.chip}>
+											<Icon name="eye" size={14} color={colors.textSecondary} />
+											<Text style={[type.small, styles.chipText]}>
+												Tidak jelas: {result.unclear_count}
+											</Text>
+										</View>
+									</View>
+								</FadeIn>
+
+								<FadeIn delay={120}>
+									<View style={styles.section}>
+										<Text style={[type.h3, styles.sectionTitle]}>
+											Rincian ingatan
+										</Text>
+										<Card>
+											{result.items.map((item, index) => (
+												<View
+													key={item.iu_id}
+													style={[
+														styles.itemRow,
+														index < result.items.length - 1 &&
+															styles.itemDivider,
+													]}
+												>
+													<Text style={[type.body, styles.itemText]}>
+														{item.description}
+													</Text>
+													<StatusChip
+														tone={resultItemTone(item.status)}
+														label={resultItemLabel(item.status)}
+													/>
+												</View>
+											))}
+										</Card>
+									</View>
+								</FadeIn>
+							</>
+						) : (
+							<FadeIn delay={60}>
+								<Card style={styles.pendingCard}>
+									<Text style={[type.body, styles.pendingText]}>
+										Sesi ini belum memiliki hasil penilaian.
+									</Text>
 								</Card>
-							</View>
-						</FadeIn>
+							</FadeIn>
+						)}
 
 						<View style={styles.note}>
 							<Icon name="info" size={16} color={colors.textSecondary} />
@@ -139,12 +234,14 @@ export default function SesiDetailScreen() {
 							</Text>
 						</View>
 					</>
-				) : (
+				) : null}
+
+				{ready && !session && !error && hasValidId ? (
 					<EmptyState
 						title="Sesi tidak ditemukan"
 						description="Catatan sesi ini tidak tersedia. Kembali ke Riwayat untuk memilih sesi lain."
 					/>
-				)}
+				) : null}
 			</ScrollView>
 		</SafeAreaView>
 	);
@@ -196,20 +293,25 @@ const styles = StyleSheet.create({
 		color: colors.textSecondary,
 		marginTop: 2,
 	},
-	durationRow: {
-		flexDirection: "row",
+	percentCard: {
+		marginTop: spacing.lg,
+		padding: spacing.lg,
+		borderRadius: radii.card,
+		backgroundColor: colors.surface,
 		alignItems: "center",
-		gap: 6,
-		marginTop: 12,
+		...shadows.card,
 	},
-	durationText: {
+	percent: {
+		color: colors.primary,
+	},
+	percentLabel: {
 		color: colors.textSecondary,
 	},
 	chipRow: {
 		flexDirection: "row",
 		flexWrap: "wrap",
 		gap: 8,
-		marginTop: 16,
+		marginTop: spacing.lg,
 	},
 	chip: {
 		flexDirection: "row",
@@ -230,22 +332,42 @@ const styles = StyleSheet.create({
 		color: colors.textPrimary,
 		marginBottom: 12,
 	},
-	summary: {
-		color: colors.textPrimary,
-	},
-	highlightRow: {
+	itemRow: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 12,
 		paddingVertical: 12,
 	},
-	highlightDivider: {
+	itemDivider: {
 		borderBottomWidth: 1,
 		borderBottomColor: colors.border,
 	},
-	highlightText: {
+	itemText: {
 		flex: 1,
 		color: colors.textPrimary,
+	},
+	pendingCard: {
+		marginTop: spacing.lg,
+	},
+	pendingText: {
+		color: colors.textSecondary,
+	},
+	loading: {
+		paddingVertical: spacing.xxxl,
+		alignItems: "center",
+	},
+	error: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 8,
+		padding: 14,
+		borderRadius: radii.cardSmall,
+		backgroundColor: colors.dangerSoft,
+		marginBottom: spacing.lg,
+	},
+	errorText: {
+		flex: 1,
+		color: colors.danger,
 	},
 	note: {
 		flexDirection: "row",

@@ -1,7 +1,16 @@
 import { useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+	ActivityIndicator,
+	Pressable,
+	ScrollView,
+	StyleSheet,
+	Text,
+	View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon, type IconName } from "../components/Icon";
+import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
 import { FadeIn } from "../components/ui/FadeIn";
@@ -14,9 +23,13 @@ import {
 	spacing,
 	type,
 } from "../constants/theme";
+import * as api from "../lib/api";
+import type { SessionHistoryItem } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { DUMMY_SESSIONS } from "../lib/dummyData";
 import { formatName } from "../lib/formatName";
+import { formatSessionDate, recallLabel, recallTone } from "../lib/sessionDisplay";
+
+const PAGE_SIZE = 20;
 
 function ContextChip({ icon, label }: { icon: IconName; label: string }) {
 	return (
@@ -29,8 +42,64 @@ function ContextChip({ icon, label }: { icon: IconName; label: string }) {
 
 export default function RiwayatScreen() {
 	const router = useRouter();
-	const { survivorProfile } = useAuth();
+	const { token, survivorProfile } = useAuth();
 	const survivorName = formatName(survivorProfile?.survivorNickname ?? "penyintas");
+
+	const [sessions, setSessions] = useState<SessionHistoryItem[] | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [page, setPage] = useState(1);
+	const [hasMore, setHasMore] = useState(false);
+	const [loadingMore, setLoadingMore] = useState(false);
+
+	useEffect(() => {
+		let active = true;
+		if (!token) {
+			return;
+		}
+		(async () => {
+			try {
+				const loaded = await api.listSessions(token, {
+					page: 1,
+					page_size: PAGE_SIZE,
+				});
+				if (active) {
+					setSessions(loaded.data);
+					setPage(1);
+					setHasMore(Boolean(loaded.pagination.has_next));
+				}
+			} catch (err) {
+				if (active) {
+					setError(api.errorMessage(err));
+				}
+			}
+		})();
+		return () => {
+			active = false;
+		};
+	}, [token]);
+
+	const loadMore = async () => {
+		if (!token || loadingMore || !hasMore) {
+			return;
+		}
+		setLoadingMore(true);
+		try {
+			const nextPage = page + 1;
+			const loaded = await api.listSessions(token, {
+				page: nextPage,
+				page_size: PAGE_SIZE,
+			});
+			setSessions((current) => [...(current ?? []), ...loaded.data]);
+			setPage(nextPage);
+			setHasMore(Boolean(loaded.pagination.has_next));
+		} catch (err) {
+			setError(api.errorMessage(err));
+		} finally {
+			setLoadingMore(false);
+		}
+	};
+
+	const loading = sessions === null && error === null;
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top"]}>
@@ -51,71 +120,97 @@ export default function RiwayatScreen() {
 				showsVerticalScrollIndicator={false}
 			>
 				<Text style={[type.body, styles.intro]}>
-					Inilah catatan perubahan dari kebiasaan {survivorName} tiap minggu.
+					Inilah catatan sesi bercerita {survivorName}.
 				</Text>
 
-				{DUMMY_SESSIONS.length === 0 ? (
+				{error ? (
+					<View style={styles.error}>
+						<Icon name="info" size={18} color={colors.danger} />
+						<Text style={[type.body, styles.errorText]}>{error}</Text>
+					</View>
+				) : null}
+
+				{loading ? (
+					<View style={styles.loading}>
+						<ActivityIndicator color={colors.primary} />
+					</View>
+				) : null}
+
+				{sessions && sessions.length === 0 ? (
 					<EmptyState
 						photo="lansia3"
 						title="Belum ada catatan"
-						description="Setelah sesi pertama, ringkasan perubahan akan muncul di sini."
+						description="Setelah sesi pertama, ringkasan sesi akan muncul di sini."
 					/>
-				) : (
-					DUMMY_SESSIONS.map((item, index) => (
-						<FadeIn key={item.id} delay={index * 60}>
-							<Pressable
-								accessibilityRole="button"
-								accessibilityLabel={`Detail sesi ${item.when}`}
-								onPress={() =>
-									router.push({
-										pathname: "/sesi-detail",
-										params: { id: item.id },
-									})
-								}
-								style={({ pressed }) => [pressed && styles.pressed]}
-							>
-								<Card style={styles.sessionCard}>
-									<View style={styles.sessionTop}>
-										<View style={styles.sessionHead}>
-											<Text style={[type.bodyStrong, styles.sessionWhen]}>
-												{item.when}
-											</Text>
-											<View style={styles.durationRow}>
-												<Icon
-													name="clock"
-													size={14}
-													color={colors.textSecondary}
-												/>
-												<Text style={[type.small, styles.durationText]}>
-													{item.duration}
+				) : null}
+
+				{sessions
+					? sessions.map((item, index) => (
+							<FadeIn key={item.id} delay={index * 60}>
+								<Pressable
+									accessibilityRole="button"
+									accessibilityLabel={`Detail sesi ${formatSessionDate(item.completed_at)}`}
+									onPress={() =>
+										router.push({
+											pathname: "/sesi-detail",
+											params: { id: String(item.id) },
+										})
+									}
+									style={({ pressed }) => [pressed && styles.pressed]}
+								>
+									<Card style={styles.sessionCard}>
+										<View style={styles.sessionTop}>
+											<View style={styles.sessionHead}>
+												<Text style={[type.bodyStrong, styles.sessionWhen]}>
+													{formatSessionDate(item.completed_at)}
+												</Text>
+												<Text style={[type.small, styles.sessionStory]}>
+													{item.story_title ?? "Cerita"}
 												</Text>
 											</View>
+											<View style={styles.sessionEnd}>
+												<StatusChip
+													tone={recallTone(item.iu_recall_percent, item.status)}
+													label={recallLabel(item.iu_recall_percent)}
+												/>
+												<Icon
+													name="chevron"
+													size={18}
+													color={colors.textSecondary}
+												/>
+											</View>
 										</View>
-										<View style={styles.sessionEnd}>
-											<StatusChip tone={item.tone} label={item.status} />
-											<Icon
-												name="chevron"
-												size={18}
-												color={colors.textSecondary}
-											/>
-										</View>
-									</View>
 
-									<View style={styles.chipRow}>
-										<ContextChip icon="smile" label={`Mood: ${item.mood}`} />
-										<ContextChip icon="moon" label={`Tidur: ${item.sleep}`} />
-									</View>
-								</Card>
-							</Pressable>
-						</FadeIn>
-					))
-				)}
+										<View style={styles.chipRow}>
+											<ContextChip
+												icon="book"
+												label={item.story_title ?? "Cerita"}
+											/>
+											{item.has_recording ? (
+												<ContextChip icon="mic" label="Ada rekaman" />
+											) : null}
+										</View>
+									</Card>
+								</Pressable>
+							</FadeIn>
+						))
+					: null}
+
+				{hasMore ? (
+					<Button
+						label={loadingMore ? "Memuat…" : "Muat lebih banyak"}
+						variant="ghost"
+						fullWidth
+						loading={loadingMore}
+						onPress={loadMore}
+						style={styles.loadMore}
+					/>
+				) : null}
 
 				<View style={styles.note}>
 					<Icon name="info" size={16} color={colors.textSecondary} />
 					<Text style={[type.small, styles.noteText]}>
-						Ini bukan diagnosis. Bawa ringkasan ini saat berkonsultasi dengan
-						dokter.
+						Catatan ini merangkum sesi bercerita yang sudah selesai.
 					</Text>
 				</View>
 			</ScrollView>
@@ -157,6 +252,23 @@ const styles = StyleSheet.create({
 		color: colors.textSecondary,
 		marginBottom: 16,
 	},
+	loading: {
+		paddingVertical: spacing.xxxl,
+		alignItems: "center",
+	},
+	error: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 8,
+		padding: 14,
+		borderRadius: radii.cardSmall,
+		backgroundColor: colors.dangerSoft,
+		marginBottom: spacing.lg,
+	},
+	errorText: {
+		flex: 1,
+		color: colors.danger,
+	},
 	sessionCard: {
 		marginBottom: 12,
 	},
@@ -177,14 +289,9 @@ const styles = StyleSheet.create({
 	sessionWhen: {
 		color: colors.textPrimary,
 	},
-	durationRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 6,
-		marginTop: 6,
-	},
-	durationText: {
+	sessionStory: {
 		color: colors.textSecondary,
+		marginTop: 2,
 	},
 	chipRow: {
 		flexDirection: "row",
@@ -212,6 +319,9 @@ const styles = StyleSheet.create({
 		padding: 14,
 		borderRadius: radii.cardSmall,
 		backgroundColor: colors.surface,
+	},
+	loadMore: {
+		marginTop: 12,
 	},
 	noteText: {
 		color: colors.textSecondary,

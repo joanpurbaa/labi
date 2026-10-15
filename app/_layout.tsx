@@ -32,7 +32,11 @@ function RootNavigator() {
 		>
 			<Stack.Protected guard={isLoggedIn && !needsOnboarding}>
 				<Stack.Screen name="(tabs)" />
+				<Stack.Screen name="sesi-pilih" />
 				<Stack.Screen name="sesi-bercerita" />
+				<Stack.Screen name="sesi-proses" />
+				<Stack.Screen name="sesi-nilai" />
+				<Stack.Screen name="sesi-hasil" />
 				<Stack.Screen name="sesi-detail" />
 				<Stack.Screen name="notifikasi" />
 				<Stack.Screen name="pertanyaan-dokter" />
@@ -41,6 +45,7 @@ function RootNavigator() {
 				<Stack.Screen name="riwayat" />
 				<Stack.Screen name="perkembangan" />
 				<Stack.Screen name="panduan" />
+				<Stack.Screen name="dev-api" />
 			</Stack.Protected>
 			<Stack.Protected guard={isLoggedIn && needsOnboarding}>
 				<Stack.Screen name="personalization" />

@@ -10,8 +10,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, gradients, layout, radii, type } from "../constants/theme";
-import { Photo } from "./photo/Photo";
-import { Icon } from "./Icon";
 import { Mascot } from "./mascot/Mascot";
 
 type AuthScreenProps = {

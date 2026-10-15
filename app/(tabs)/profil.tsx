@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { router } from "expo-router";
 import {
 	Alert,
 	Pressable,
@@ -353,23 +354,6 @@ export default function ProfilScreen() {
 					onPress={logout}
 					style={styles.action}
 				/>
-
-				<Pressable
-					accessibilityRole="button"
-					accessibilityLabel="Hapus akun dan data lokal"
-					accessibilityState={{ disabled: deleting }}
-					disabled={deleting}
-					onPress={confirmDelete}
-					style={({ pressed }) => [
-						styles.deleteButton,
-						(pressed || deleting) && styles.pressed,
-					]}
-				>
-					<Icon name="trash" size={20} color={colors.danger} />
-					<Text style={[type.bodyStrong, styles.deleteText]}>
-						{deleting ? "Menghapus..." : "Hapus akun & data"}
-					</Text>
-				</Pressable>
 			</ScrollView>
 		</SafeAreaView>
 	);

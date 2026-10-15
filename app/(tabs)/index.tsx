@@ -1,5 +1,6 @@
 import { router, type Href } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, {
 	useAnimatedStyle,
 	useReducedMotion,
@@ -29,6 +30,9 @@ import { WEEKLY_PROGRESS, WEEKLY_SUMMARY } from "../../lib/dummyData";
 import { formatName } from "../../lib/formatName";
 import { getGreeting } from "../../lib/greeting";
 import { mascotForHome } from "../../lib/mascotMood";
+import * as api from "../../lib/api";
+import { clearActiveSession, getActiveSession } from "../../lib/activeSession";
+import { sessionDestination } from "../../lib/sessionFlow";
 
 type QuickAction = {
 	key: string;
@@ -44,7 +48,7 @@ const QUICK_ACTIONS: QuickAction[] = [
 		label: "Mulai sesi",
 		threeD: "studio-microphone",
 		tile: colors.primarySoft,
-		route: "/sesi-bercerita",
+		route: "/sesi-pilih",
 	},
 	{
 		key: "history",
@@ -128,7 +132,51 @@ function QuickTile({
 }
 
 export default function HomeScreen() {
-	const { user, survivorProfile } = useAuth();
+	const { user, token, survivorProfile } = useAuth();
+	const [pendingSession, setPendingSession] = useState<{ sessionId: number; storyId: number } | null>(null);
+	const didResume = useRef(false);
+
+	useEffect(() => {
+		let active = true;
+		const checkActiveSession = async (allowNavigation: boolean) => {
+			if (!token || !user) return;
+			const local = await getActiveSession(user.id);
+			if (!local) return;
+			try {
+				const session = await api.getSession(token, local.sessionId);
+				if (!active) return;
+				if (session.status === "completed") {
+					await clearActiveSession(user.id);
+					setPendingSession(null);
+					if (allowNavigation && !didResume.current) {
+						didResume.current = true;
+						router.replace({ pathname: "/sesi-hasil", params: { sessionId: String(session.id) } });
+					}
+					return;
+				}
+				const next = { sessionId: session.id, storyId: session.story_id };
+				setPendingSession(next);
+				if (allowNavigation && !didResume.current) {
+					didResume.current = true;
+					const destination = sessionDestination(session.status);
+					router.replace({ pathname: `/${destination}`, params: { sessionId: String(session.id), storyId: String(session.story_id) } });
+				}
+			} catch (err) {
+				if (err instanceof api.ApiError && err.status === 404) {
+					await clearActiveSession(user.id);
+					if (active) setPendingSession(null);
+				}
+			}
+		};
+		void checkActiveSession(true);
+		const subscription = AppState.addEventListener("change", (state) => {
+			if (state === "active") void checkActiveSession(false);
+		});
+		return () => {
+			active = false;
+			subscription.remove();
+		};
+	}, [token, user]);
 
 	const survivorName = formatName(
 		survivorProfile?.survivorNickname ?? "orang yang kamu dampingi",
@@ -154,6 +202,30 @@ export default function HomeScreen() {
 						onPressNotification={() => router.push("/notifikasi")}
 					/>
 				</FadeIn>
+
+				{pendingSession ? (
+					<FadeIn delay={30}>
+						<Button
+							label="Lanjutkan sesi yang tersimpan"
+							fullWidth
+							onPress={() => void (async () => {
+								if (!token || !user) return;
+								try {
+									const session = await api.getSession(token, pendingSession.sessionId);
+									if (session.status === "completed") {
+										await clearActiveSession(user.id);
+										router.push({ pathname: "/sesi-hasil", params: { sessionId: String(session.id) } });
+										return;
+									}
+									const destination = sessionDestination(session.status);
+									router.push({ pathname: `/${destination}`, params: { sessionId: String(session.id), storyId: String(session.story_id) } });
+								} catch {
+									setPendingSession(null);
+								}
+							})()}
+						/>
+					</FadeIn>
+				) : null}
 
 				<FadeIn delay={60}>
 					<Card variant="hero" style={styles.heroCard}>
@@ -201,7 +273,7 @@ export default function HomeScreen() {
 
 						<Button
 							label={`Mulai sesi bersama ${survivorName}`}
-							onPress={() => router.push("/sesi-bercerita")}
+							onPress={() => router.push("/sesi-pilih")}
 							fullWidth
 							style={styles.heroButton}
 						/>
