@@ -38,7 +38,10 @@ export default function LoginScreen() {
 
 		if (!result.ok) {
 			setError(result.error);
+			return;
 		}
+
+		router.replace("/(tabs)");
 	};
 
 	return (

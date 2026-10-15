@@ -1,3 +1,4 @@
+import { router, useLocalSearchParams } from "expo-router";
 import { useRef, useState } from "react";
 import {
 	KeyboardAvoidingView,
@@ -73,31 +74,39 @@ function FieldLabel({ children, hint }: { children: string; hint?: string }) {
 }
 
 export default function PersonalizationScreen() {
-	const { saveSurvivorProfile } = useAuth();
+	const { saveSurvivorProfile, survivorProfile } = useAuth();
+	const { mode } = useLocalSearchParams<{ mode?: string }>();
+	const isEditMode = mode === "edit";
 	const scrollRef = useRef<ScrollView>(null);
 
 	const [step, setStep] = useState(0);
-	const [survivorNickname, setSurvivorNickname] = useState("");
-	const [ageRange, setAgeRange] = useState<string | undefined>(undefined);
+	const [survivorNickname, setSurvivorNickname] = useState(
+		() => survivorProfile?.survivorNickname ?? "",
+	);
+	const [ageRange, setAgeRange] = useState<string | undefined>(
+		() => survivorProfile?.ageRange,
+	);
 	const [primaryLanguage, setPrimaryLanguage] = useState<string | undefined>(
-		undefined,
+		() => survivorProfile?.primaryLanguage,
 	);
 	const [communicationGoals, setCommunicationGoals] = useState<
 		CommunicationGoal[]
-	>([]);
+	>(() => survivorProfile?.communicationGoals ?? []);
 	const [instructionPreference, setInstructionPreference] = useState<
 		InstructionPreference | undefined
-	>(undefined);
+	>(() => survivorProfile?.instructionPreference);
 	const [preferredSessionDuration, setPreferredSessionDuration] = useState<
 		PreferredSessionDuration | undefined
-	>(undefined);
+	>(() => survivorProfile?.preferredSessionDuration);
 	const [preferredTopics, setPreferredTopics] = useState<ConversationTopic[]>(
-		[],
+		() => survivorProfile?.preferredTopics ?? [],
 	);
 	const [practiceMode, setPracticeMode] = useState<PracticeMode | undefined>(
-		undefined,
+		() => survivorProfile?.practiceMode,
 	);
-	const [confirmed, setConfirmed] = useState(false);
+	const [confirmed, setConfirmed] = useState(
+		() => survivorProfile?.personalizationConfirmed ?? false,
+	);
 	const [error, setError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 
@@ -147,6 +156,18 @@ export default function PersonalizationScreen() {
 
 		if (!result.ok) {
 			setError(result.error);
+			return;
+		}
+
+		// Sukses: onboarding → beranda; edit dari profil → kembali ke profil.
+		if (isEditMode) {
+			if (router.canGoBack()) {
+				router.back();
+			} else {
+				router.replace("/(tabs)/profil");
+			}
+		} else {
+			router.replace("/(tabs)");
 		}
 	};
 

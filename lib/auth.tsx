@@ -27,7 +27,9 @@ export type AuthUser = {
 
 export type RegisterInput = { name: string; email: string; password: string };
 export type LoginInput = { email: string; password: string };
-export type AuthResult = { ok: true } | { ok: false; error: string };
+export type AuthResult =
+	| { ok: true }
+	| { ok: false; error: string; registered?: boolean };
 
 type AuthContextValue = {
 	user: AuthUser | null;
@@ -45,6 +47,17 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function toAuthUser(profile: api.UserRead): AuthUser {
+	if (
+		!profile ||
+		typeof profile.id !== "number" ||
+		typeof profile.username !== "string" ||
+		typeof profile.email !== "string"
+	) {
+		if (__DEV__) {
+			console.log("[auth] profil /auth/me tidak valid:", profile);
+		}
+		throw new api.ApiError("Respons profil tidak valid. Coba lagi.", 0, profile);
+	}
 	return {
 		id: profile.id,
 		name: profile.username,
@@ -65,13 +78,52 @@ async function fetchSurvivorProfile(
 	}
 }
 
+async function getStoredToken(): Promise<string | null> {
+	try {
+		const secure = await SecureStore.getItemAsync(TOKEN_KEY);
+		if (secure) {
+			return secure;
+		}
+	} catch {
+		// SecureStore tidak tersedia (mis. web) — fallback ke AsyncStorage.
+	}
+	try {
+		return await AsyncStorage.getItem(TOKEN_KEY);
+	} catch {
+		return null;
+	}
+}
+
+async function setStoredToken(token: string): Promise<void> {
+	try {
+		await SecureStore.setItemAsync(TOKEN_KEY, token);
+		return;
+	} catch {
+		// Lanjut ke fallback AsyncStorage di bawah.
+	}
+	await AsyncStorage.setItem(TOKEN_KEY, token);
+}
+
+async function deleteStoredToken(): Promise<void> {
+	try {
+		await SecureStore.deleteItemAsync(TOKEN_KEY);
+	} catch {
+		// Abaikan — kemungkinan SecureStore tidak tersedia / key tidak ada.
+	}
+	try {
+		await AsyncStorage.removeItem(TOKEN_KEY);
+	} catch {
+		// Abaikan agar logout tidak pernah gagal karena storage.
+	}
+}
+
 async function persistSession(token: string, user: AuthUser): Promise<void> {
-	await SecureStore.setItemAsync(TOKEN_KEY, token);
+	await setStoredToken(token);
 	await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 async function clearSession(): Promise<void> {
-	await SecureStore.deleteItemAsync(TOKEN_KEY);
+	await deleteStoredToken();
 	await AsyncStorage.removeItem(USER_KEY);
 }
 
@@ -89,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 		(async () => {
 			try {
-				const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+				const storedToken = await getStoredToken();
 				if (!storedToken) {
 					return;
 				}
@@ -152,11 +204,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				return { ok: false, error: api.errorMessage(error) };
 			}
 
+			// Register sukses → langsung login otomatis supaya user masuk ke
+			// personalisasi penyintas, tanpa lewat halaman login.
 			try {
 				const session = await api.login({
 					username: cleanEmail,
 					password,
 				});
+				if (!session?.access_token) {
+					throw new api.ApiError(
+						"Respons login tidak valid. Coba lagi.",
+						0,
+						session,
+					);
+				}
 				const profile = await api.me(session.access_token);
 				const nextUser = toAuthUser(profile);
 
@@ -167,11 +228,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				setNeedsOnboarding(true);
 				setUser(nextUser);
 				return { ok: true };
-			} catch {
+			} catch (error) {
+				if (__DEV__) {
+					console.log("[auth] auto-login setelah register gagal:", error);
+				}
 				return {
 					ok: false,
-					error:
-						"Akun berhasil dibuat, tetapi gagal masuk otomatis. Silakan masuk.",
+					error: "Akun berhasil dibuat. Silakan masuk untuk melanjutkan.",
+					registered: true,
 				};
 			}
 		},
@@ -191,6 +255,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 					username: cleanEmail,
 					password,
 				});
+				if (!session?.access_token) {
+					if (__DEV__) {
+						console.log("[auth] login: respons token tidak valid:", session);
+					}
+					return {
+						ok: false,
+						error: "Respons login tidak valid. Coba lagi.",
+					};
+				}
 				const profile = await api.me(session.access_token);
 				const nextUser = toAuthUser(profile);
 
@@ -207,6 +280,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				setUser(nextUser);
 				return { ok: true };
 			} catch (error) {
+				if (__DEV__) {
+					console.log("[auth] login gagal:", error);
+				}
 				return { ok: false, error: api.errorMessage(error) };
 			}
 		},

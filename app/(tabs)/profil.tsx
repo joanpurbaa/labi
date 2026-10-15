@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
 import { router } from "expo-router";
+import { useEffect, useState, type ReactNode } from "react";
 import {
 	Alert,
 	Pressable,
@@ -167,7 +167,14 @@ export default function ProfilScreen() {
 		setDeleting(false);
 		if (!result.ok) {
 			Alert.alert("Gagal", result.error);
+			return;
 		}
+		router.replace("/login");
+	};
+
+	const handleLogout = async () => {
+		await logout();
+		router.replace("/login");
 	};
 
 	const confirmDelete = () => {
@@ -305,6 +312,17 @@ export default function ProfilScreen() {
 							</View>
 						)}
 					</Section>
+					<Button
+						label={
+							survivorProfile
+								? "Ubah Data Penyintas"
+								: "Tambah Data Penyintas"
+						}
+						variant="secondary"
+						fullWidth
+						onPress={() => router.push("/personalization?mode=edit")}
+						style={styles.editAction}
+					/>
 				</FadeIn>
 
 				<FadeIn delay={180}>
@@ -351,9 +369,26 @@ export default function ProfilScreen() {
 					variant="secondary"
 					icon="logout"
 					fullWidth
-					onPress={logout}
+					onPress={handleLogout}
 					style={styles.action}
 				/>
+
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel="Hapus akun dan data lokal"
+					accessibilityState={{ disabled: deleting }}
+					disabled={deleting}
+					onPress={confirmDelete}
+					style={({ pressed }) => [
+						styles.deleteButton,
+						(pressed || deleting) && styles.pressed,
+					]}
+				>
+					<Icon name="trash" size={20} color={colors.danger} />
+					<Text style={[type.bodyStrong, styles.deleteText]}>
+						{deleting ? "Menghapus..." : "Hapus akun & data"}
+					</Text>
+				</Pressable>
 			</ScrollView>
 		</SafeAreaView>
 	);
@@ -505,6 +540,9 @@ const styles = StyleSheet.create({
 	},
 	action: {
 		marginBottom: 12,
+	},
+	editAction: {
+		marginTop: 12,
 	},
 	deleteButton: {
 		flexDirection: "row",

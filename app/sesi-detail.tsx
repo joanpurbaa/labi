@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
 import { Mascot } from "../components/mascot/Mascot";
+import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
 import { FadeIn } from "../components/ui/FadeIn";
@@ -26,6 +27,10 @@ import {
 import * as api from "../lib/api";
 import type { ResultRead, SessionRead } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import {
+	ANALYZING_MESSAGE,
+	useAnalysisPolling,
+} from "../lib/useAnalysisPolling";
 import { statusToExpression } from "../lib/mascotMood";
 import {
 	formatSessionDate,
@@ -45,6 +50,10 @@ export default function SesiDetailScreen() {
 	const [result, setResult] = useState<ResultRead | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [ready, setReady] = useState(false);
+	const analysisPoll = useAnalysisPolling({
+		token,
+		sessionId: numericSessionId,
+	});
 
 	const hasValidId = Boolean(token) && Number.isFinite(numericSessionId);
 
@@ -83,6 +92,37 @@ export default function SesiDetailScreen() {
 			active = false;
 		};
 	}, [token, numericSessionId]);
+
+	const resumeAnalysis = analysisPoll.resume;
+	const analysisPhase = analysisPoll.phase;
+
+	useEffect(() => {
+		// Sesi belum selesai (mis. refresh saat AI masih jalan):
+		// cek status analisis dulu, jangan langsung tembak /transcript.
+		if (!session || session.status === "completed") {
+			return;
+		}
+		void resumeAnalysis();
+	}, [session, resumeAnalysis]);
+
+	useEffect(() => {
+		// Analisis baru selesai saat halaman dibuka → muat ulang hasil.
+		if (analysisPhase !== "completed" || !token) {
+			return;
+		}
+		let active = true;
+		api
+			.getResult(token, numericSessionId)
+			.then((data) => {
+				if (active) {
+					setResult(data);
+				}
+			})
+			.catch(() => {});
+		return () => {
+			active = false;
+		};
+	}, [analysisPhase, token, numericSessionId]);
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top"]}>
@@ -148,6 +188,97 @@ export default function SesiDetailScreen() {
 								</View>
 							</Card>
 						</FadeIn>
+
+						{session.status !== "completed" ? (
+							<FadeIn delay={30}>
+								<Card style={styles.analysisCard}>
+									{analysisPoll.isAnalyzing ? (
+										<View style={styles.analyzingRow}>
+											<ActivityIndicator color={colors.primary} />
+											<Text style={[type.body, styles.analysisText]}>
+												{ANALYZING_MESSAGE}
+											</Text>
+										</View>
+									) : null}
+
+									{analysisPhase === "not-started" ? (
+										<>
+											<Text style={[type.body, styles.analysisText]}>
+												Sesi ini belum dianalisis. Mulai analisis untuk
+												memproses rekaman menjadi transkrip dan panduan
+												latihan.
+											</Text>
+											<Button
+												label="Mulai Analisis"
+												fullWidth
+												disabled={analysisPoll.isAnalyzing}
+												onPress={() => void analysisPoll.start()}
+												style={styles.analysisButton}
+											/>
+										</>
+									) : null}
+
+									{analysisPhase === "failed" ? (
+										<>
+											<Text style={[type.body, styles.analysisError]}>
+												{analysisPoll.message ??
+													"Analisis gagal. Coba lagi ya."}
+											</Text>
+											<Button
+												label="Analisis Ulang"
+												fullWidth
+												disabled={analysisPoll.isAnalyzing}
+												onPress={() => void analysisPoll.start()}
+												style={styles.analysisButton}
+											/>
+										</>
+									) : null}
+
+									{analysisPhase === "timeout" ? (
+										<>
+											<Text style={[type.body, styles.analysisText]}>
+												{analysisPoll.message}
+											</Text>
+											<Button
+												label="Muat ulang status"
+												variant="secondary"
+												fullWidth
+												onPress={() => void analysisPoll.resume()}
+												style={styles.analysisButton}
+											/>
+										</>
+									) : null}
+
+									{analysisPhase === "error" ? (
+										<>
+											<Text style={[type.body, styles.analysisError]}>
+												{analysisPoll.message ??
+													"Gagal memuat status analisis."}
+											</Text>
+											<Button
+												label="Coba lagi"
+												variant="secondary"
+												fullWidth
+												onPress={() => void analysisPoll.resume()}
+												style={styles.analysisButton}
+											/>
+										</>
+									) : null}
+
+									{analysisPhase === "completed" &&
+									analysisPoll.transcript ? (
+										<>
+											<Text style={[type.bodyStrong, styles.transcriptTitle]}>
+												Transkrip
+											</Text>
+											<Text style={[type.body, styles.transcriptText]}>
+												{analysisPoll.transcript.text}
+											</Text>
+										</>
+									) : null}
+								</Card>
+							</FadeIn>
+						) : null}
 
 						{result ? (
 							<>
@@ -348,6 +479,31 @@ const styles = StyleSheet.create({
 	},
 	pendingCard: {
 		marginTop: spacing.lg,
+	},
+	analysisCard: {
+		marginTop: spacing.lg,
+	},
+	analyzingRow: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 12,
+	},
+	analysisText: {
+		flex: 1,
+		color: colors.textSecondary,
+	},
+	analysisError: {
+		color: colors.danger,
+	},
+	analysisButton: {
+		marginTop: spacing.md,
+	},
+	transcriptTitle: {
+		color: colors.textPrimary,
+	},
+	transcriptText: {
+		color: colors.textSecondary,
+		marginTop: spacing.sm,
 	},
 	pendingText: {
 		color: colors.textSecondary,
