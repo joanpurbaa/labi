@@ -25,13 +25,58 @@ import {
 	isAnalysisFailed,
 	sessionDestination,
 } from "../lib/sessionFlow";
+import { ANALYSIS_TIMEOUT_MESSAGE } from "../lib/useAnalysisPolling";
 
-const MAX_WAIT_MS = 120000;
-const MAX_POLL_ATTEMPTS = 45;
-const POLL_START_MS = 1200;
-const POLL_MAX_MS = 4000;
+const POLL_INTERVAL_MS = 3000;
+const MAX_WAIT_MS = 240000;
+const MAX_POLL_ATTEMPTS = 80;
+
+function progressText(elapsedSec: number): string {
+	if (elapsedSec <= 15) {
+		return "Menyiapkan transkripsi audio...";
+	}
+	if (elapsedSec <= 35) {
+		return "Menganalisis jeda hening dan ritme bicara...";
+	}
+	return "Mengevaluasi unit informasi klinis dengan AI lokal (proses ini membutuhkan waktu 2–3 menit)...";
+}
 
 type FlowState = "checking" | "working" | "slow" | "failed" | "error";
+
+function isTransientFetchError(err: unknown): boolean {
+	if (!(err instanceof api.ApiError)) {
+		return true;
+	}
+	if (err.code === "network" || err.code === "timeout") {
+		return true;
+	}
+	return err.status === 0 || err.status >= 500;
+}
+
+const MAX_AUTO_RESTARTS = 2;
+
+// Kode yang jelas-jelas salah input (rekaman bermasalah) → langsung vonis.
+// Kode lain (INTERNAL, timeout, provider, atau tidak dikenal) → transient,
+// jangan vonis gagal, tunggu + restart otomatis.
+const FATAL_ANALYSIS_CODES = new Set([
+	"NO_AUDIO",
+	"EMPTY_AUDIO",
+	"AUDIO_TOO_SHORT",
+	"TOO_SHORT",
+	"UNSUPPORTED_FORMAT",
+	"INVALID_AUDIO",
+	"BAD_AUDIO",
+	"NO_SPEECH",
+	"NO_SPEECH_DETECTED",
+	"DURATION_TOO_SHORT",
+]);
+
+function isFatalAnalysisFailure(code?: string | null): boolean {
+	if (!code) {
+		return false;
+	}
+	return FATAL_ANALYSIS_CODES.has(code.trim().toUpperCase());
+}
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
@@ -65,7 +110,10 @@ export default function SesiProsesScreen() {
 	const [state, setState] = useState<FlowState>("checking");
 	const [message, setMessage] = useState<string | null>(null);
 	const [retryKey, setRetryKey] = useState(0);
+	const [resumeKey, setResumeKey] = useState(0);
+	const [elapsedSec, setElapsedSec] = useState(0);
 	const abortRef = useRef<AbortController | null>(null);
+	const skipStartRef = useRef(false);
 
 	useEffect(() => {
 		if (!token || !user || !Number.isFinite(numericSessionId)) {
@@ -74,9 +122,64 @@ export default function SesiProsesScreen() {
 		const controller = new AbortController();
 		abortRef.current = controller;
 		let active = true;
+		let autoRestarts = 0;
+
+		const showFailed = (analysis: AnalysisRead) => {
+			if (active) {
+				setMessage(
+					analysisErrorText(analysis.error_code, analysis.error_message),
+				);
+				setState("failed");
+			}
+		};
+
+		// return true = berhenti (sudah vonis / abort / sesi hilang),
+		// false = lanjut polling dengan UI "harap tunggu".
+		const recoverFromFailure = async (
+			analysis: AnalysisRead,
+		): Promise<boolean> => {
+			if (isFatalAnalysisFailure(analysis.error_code)) {
+				showFailed(analysis);
+				return true;
+			}
+			if (autoRestarts >= MAX_AUTO_RESTARTS) {
+				showFailed(analysis);
+				return true;
+			}
+			autoRestarts += 1;
+			if (active) {
+				setState("working");
+			}
+			try {
+				await api.startAnalysis(
+					token,
+					numericSessionId,
+					undefined,
+					controller.signal,
+				);
+			} catch (err) {
+				if (api.isAbortError(err)) {
+					return true;
+				}
+				if (err instanceof api.ApiError && err.status === 404) {
+					if (active) {
+						setMessage(api.errorMessage(err));
+						setState("error");
+					}
+					return true;
+				}
+				if (__DEV__) {
+					console.log(
+						"[sesi-proses] restart analisis otomatis gagal, lanjut polling:",
+						err,
+					);
+				}
+			}
+			return false;
+		};
+
 		const poll = async () => {
 			const startedAt = Date.now();
-			let delay = POLL_START_MS;
 			let attempts = 0;
 			while (active && !controller.signal.aborted && attempts < MAX_POLL_ATTEMPTS) {
 				if (Date.now() - startedAt > MAX_WAIT_MS) {
@@ -86,7 +189,7 @@ export default function SesiProsesScreen() {
 					return;
 				}
 				try {
-					await sleep(delay, controller.signal);
+					await sleep(POLL_INTERVAL_MS, controller.signal);
 				} catch {
 					return;
 				}
@@ -94,6 +197,9 @@ export default function SesiProsesScreen() {
 					return;
 				}
 				attempts += 1;
+				if (active) {
+					setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+				}
 				let analysis: AnalysisRead;
 				try {
 					analysis = await api.getAnalysis(token, numericSessionId, controller.signal);
@@ -101,7 +207,6 @@ export default function SesiProsesScreen() {
 					if (api.isAbortError(err)) {
 						return;
 					}
-					delay = Math.min(Math.round(delay * 1.4), POLL_MAX_MS);
 					continue;
 				}
 				if (isAnalysisDone(analysis.status)) {
@@ -121,26 +226,56 @@ export default function SesiProsesScreen() {
 					return;
 				}
 				if (isAnalysisFailed(analysis.status)) {
-					if (active) {
-						setMessage(
-							analysisErrorText(analysis.error_code, analysis.error_message),
-						);
-						setState("failed");
+					if (await recoverFromFailure(analysis)) {
+						return;
 					}
-					return;
+					continue;
 				}
-				delay = Math.min(Math.round(delay * 1.4), POLL_MAX_MS);
 			}
 			if (active && !controller.signal.aborted) {
 				setState("slow");
 			}
 		};
 
+		const loadSession = async () => {
+			let lastError: unknown = null;
+			for (let attempt = 0; attempt < 3; attempt += 1) {
+				try {
+					return await api.getSession(
+						token,
+						numericSessionId,
+						controller.signal,
+					);
+				} catch (err) {
+					if (api.isAbortError(err)) {
+						throw err;
+					}
+					lastError = err;
+					if (
+						!isTransientFetchError(err) ||
+						!active ||
+						controller.signal.aborted
+					) {
+						throw err;
+					}
+					try {
+						await sleep(800 * (attempt + 1), controller.signal);
+					} catch {
+						throw err;
+					}
+				}
+			}
+			throw lastError;
+		};
+
 		const run = async () => {
 			setState("checking");
 			setMessage(null);
+			setElapsedSec(0);
+			const skipStart = skipStartRef.current;
+			skipStartRef.current = false;
 			try {
-				const session = await api.getSession(token, numericSessionId, controller.signal);
+				const session = await loadSession();
 				if (!active || controller.signal.aborted) {
 					return;
 				}
@@ -180,15 +315,20 @@ export default function SesiProsesScreen() {
 					if (api.isAbortError(err)) {
 						return;
 					}
-					if (!(err instanceof api.ApiError) || err.status !== 404) {
-						setMessage(api.errorMessage(err));
-						setState("error");
+					// Gagal baca sekali (404 = run belum ada, 500/network =
+					// transient) bukan vonis gagal — lanjut ke start/polling.
+					if (__DEV__) {
+						console.log("[sesi-proses] getAnalysis awal gagal, lanjut polling:", err);
+					}
+					analysis = null;
+				}
+				if (analysis && isAnalysisFailed(analysis.status)) {
+					if (await recoverFromFailure(analysis)) {
 						return;
 					}
-				}
-				if (analysis && isAnalysisFailed(analysis.status) && retryKey === 0) {
-					setMessage(analysisErrorText(analysis.error_code, analysis.error_message));
-					setState("failed");
+					// Recovery sudah restart run baru — langsung polling,
+					// jangan start dua kali.
+					await poll();
 					return;
 				}
 				if (analysis && isAnalysisDone(analysis.status)) {
@@ -199,8 +339,9 @@ export default function SesiProsesScreen() {
 					return;
 				}
 				if (
-					(!analysis && session.status === "recording_uploaded") ||
-					isAnalysisFailed(analysis?.status)
+					!skipStart &&
+					((!analysis && session.status === "recording_uploaded") ||
+						isAnalysisFailed(analysis?.status))
 				) {
 					try {
 						analysis = await api.startAnalysis(token, numericSessionId, undefined, controller.signal);
@@ -208,9 +349,16 @@ export default function SesiProsesScreen() {
 						if (api.isAbortError(err)) {
 							return;
 						}
-						setMessage(api.errorMessage(err));
-						setState("error");
-						return;
+						if (err instanceof api.ApiError && err.status === 404) {
+							setMessage(api.errorMessage(err));
+							setState("error");
+							return;
+						}
+						// Start gagal transient (atau run sudah jalan = 409):
+						// jangan vonis error — polling yang menentukan.
+						if (__DEV__) {
+							console.log("[sesi-proses] startAnalysis gagal, lanjut polling:", err);
+						}
 					}
 				}
 				if (!active || controller.signal.aborted) {
@@ -233,11 +381,9 @@ export default function SesiProsesScreen() {
 					return;
 				}
 				if (analysis && isAnalysisFailed(analysis.status)) {
-					setMessage(
-						analysisErrorText(analysis.error_code, analysis.error_message),
-					);
-					setState("failed");
-					return;
+					if (await recoverFromFailure(analysis)) {
+						return;
+					}
 				}
 				await poll();
 			} catch (err) {
@@ -255,7 +401,7 @@ export default function SesiProsesScreen() {
 			active = false;
 			controller.abort();
 		};
-	}, [token, user, numericSessionId, numericStoryId, retryKey, router]);
+	}, [token, user, numericSessionId, numericStoryId, retryKey, resumeKey, router]);
 
 	useEffect(() => {
 		const subscription = AppState.addEventListener("change", (nextState) => {
@@ -266,6 +412,12 @@ export default function SesiProsesScreen() {
 	}, []);
 
 	const retry = () => setRetryKey((value) => value + 1);
+
+	// Timeout 240 dtk: lanjutkan polling murni tanpa restart run baru.
+	const continueWaiting = () => {
+		skipStartRef.current = true;
+		setResumeKey((value) => value + 1);
+	};
 
 	const leave = async () => {
 		abortRef.current?.abort();
@@ -300,17 +452,22 @@ export default function SesiProsesScreen() {
 				<Text style={[type.h2, styles.title]}>
 					{state === "failed"
 						? "Cerita belum bisa diproses"
-						: state === "slow"
-							? "Masih kami siapkan"
-					: "Sedang menyusun hasil bicara Ibu…"}
+						: state === "error"
+							? "Tidak bisa memuat progres"
+							: state === "slow"
+								? "Masih kami siapkan"
+						: "Sedang menyusun hasil bicara Ibu…"}
 				</Text>
 				<Text style={[type.body, styles.body]}>
 					{state === "failed"
 						? (message ??
 							"Ada kendala kecil saat memproses cerita. Coba lagi ya.")
-						: state === "slow"
-							? "Prosesnya lebih lama dari biasanya. Kamu boleh menunggu atau mencoba lagi nanti."
-						: "Hasilnya boleh dilihat nanti. Proses tetap berjalan meski aplikasi ditutup."}
+						: state === "error"
+							? (message ??
+								"Ada kendala saat memuat progres analisis. Coba lagi ya.")
+							: state === "slow"
+								? ANALYSIS_TIMEOUT_MESSAGE
+							: progressText(elapsedSec)}
 				</Text>
 
 				{state === "checking" || state === "working" ? (
@@ -332,7 +489,25 @@ export default function SesiProsesScreen() {
 			</ScrollView>
 
 			<View style={styles.footer}>
-				{state === "failed" || state === "error" || state === "slow" ? (
+				{state === "slow" ? (
+					<>
+						<Button
+							label="Lanjutkan Menunggu"
+							size="large"
+							fullWidth
+							onPress={continueWaiting}
+							style={styles.retry}
+						/>
+						<Button
+							label="Muat Ulang Halaman"
+							variant="secondary"
+							fullWidth
+							onPress={retry}
+							style={styles.retry}
+						/>
+					</>
+				) : null}
+				{state === "failed" || state === "error" ? (
 					<Button
 						label={state === "failed" ? "Proses ulang" : "Coba lagi"}
 						size="large"

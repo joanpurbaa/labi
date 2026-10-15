@@ -121,6 +121,10 @@ export function errorMessage(error: unknown): string {
 			return validationMessage(detailValue(error.data));
 		}
 		if (error.status === 401) {
+			const detail = detailValue(error.data);
+			if (typeof detail === "string" && detail.trim()) {
+				return detail;
+			}
 			return "Sesi tidak valid. Silakan masuk lagi.";
 		}
 		if (error.status === 403) {
@@ -134,7 +138,7 @@ export function errorMessage(error: unknown): string {
 		}
 		if (error.status === 400) {
 			const detail = detailValue(error.data);
-			if (typeof detail === "string") {
+			if (typeof detail === "string" && detail.trim()) {
 				return detail;
 			}
 			return "Permintaan tidak dapat diproses. Periksa kembali datamu.";
@@ -143,6 +147,9 @@ export function errorMessage(error: unknown): string {
 			return "Server sedang bermasalah. Coba lagi nanti.";
 		}
 		return error.message;
+	}
+	if (__DEV__) {
+		console.log("[api] unexpected non-ApiError:", error);
 	}
 	return "Terjadi kesalahan. Coba lagi.";
 }

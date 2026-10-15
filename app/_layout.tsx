@@ -16,7 +16,7 @@ import { CenterAuditBanner } from "../lib/centerAudit";
 import { loadHapticsPreference } from "../lib/haptics";
 
 function RootNavigator() {
-	const { user, isReady, needsOnboarding } = useAuth();
+	const { user, isReady } = useAuth();
 	const isLoggedIn = user !== null;
 
 	if (!isReady) {
@@ -30,7 +30,7 @@ function RootNavigator() {
 				contentStyle: { backgroundColor: colors.background },
 			}}
 		>
-			<Stack.Protected guard={isLoggedIn && !needsOnboarding}>
+			<Stack.Protected guard={isLoggedIn}>
 				<Stack.Screen name="(tabs)" />
 				<Stack.Screen name="sesi-pilih" />
 				<Stack.Screen name="sesi-bercerita" />
@@ -47,12 +47,13 @@ function RootNavigator() {
 				<Stack.Screen name="panduan" />
 				<Stack.Screen name="dev-api" />
 			</Stack.Protected>
-			<Stack.Protected guard={isLoggedIn && needsOnboarding}>
+			<Stack.Protected guard={isLoggedIn}>
 				<Stack.Screen name="personalization" />
 			</Stack.Protected>
 			<Stack.Protected guard={!isLoggedIn}>
 				<Stack.Screen name="(auth)" />
 			</Stack.Protected>
+			<Stack.Screen name="index" />
 		</Stack>
 	);
 }

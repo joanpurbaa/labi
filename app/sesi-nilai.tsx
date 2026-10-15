@@ -92,15 +92,16 @@ export default function SesiNilaiScreen() {
 					router.replace({ pathname: "/sesi-bercerita", params: { sessionId: String(numericSessionId), storyId: String(session.story_id) } });
 					return;
 				}
-				const [detail, analysis, transcriptData] = await Promise.all([
+				const [detail, analysis] = await Promise.all([
 					api.getStory(token, Number.isFinite(numericStoryId) ? numericStoryId : session.story_id, controller.signal),
 					api.getAnalysis(token, numericSessionId, controller.signal),
-					api.getTranscript(token, numericSessionId, controller.signal).catch(() => null),
 				]);
 				if (analysis.status !== "completed") {
 					router.replace({ pathname: "/sesi-proses", params: { sessionId: String(numericSessionId), storyId: String(session.story_id) } });
 					return;
 				}
+				// Transkrip HANYA diambil setelah status completed.
+				const transcriptData = await api.getTranscript(token, numericSessionId, controller.signal).catch(() => null);
 				if (active) {
 					setStory(detail);
 					setTranscript(transcriptData);

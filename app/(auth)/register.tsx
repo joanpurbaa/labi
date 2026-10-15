@@ -78,7 +78,16 @@ export default function RegisterScreen() {
 
 		if (!result.ok) {
 			setErrors({ general: result.error });
+			// Akun kebuat tapi auto-login gagal → fallback ke login manual.
+			if (result.registered) {
+				router.replace("/login");
+			}
+			return;
 		}
+
+		// Sukses: auto-login sudah jalan di dalam register(), user sudah
+		// kesimpan → langsung ke personalisasi penyintas.
+		router.replace("/personalization");
 	};
 
 	return (
