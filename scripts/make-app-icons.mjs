@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import sharp from "sharp";
 
 const ROOT = resolve(process.argv[2] ?? ".");
-const SRC = join(ROOT, "assets/mascot/menyambut.png");
+const SRC = join(ROOT, "assets/mascot/menyambut.webp");
 const OUT = join(ROOT, "assets/icons");
 
 const CREAM = "#FFF8EE";
