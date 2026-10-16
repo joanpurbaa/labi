@@ -25,7 +25,9 @@ import {
 	type,
 } from "../../constants/theme";
 import { useAuth } from "../../lib/auth";
+import * as api from "../../lib/api";
 import { formatName } from "../../lib/formatName";
+import { resolveParticipantId } from "../../lib/participant";
 import {
 	isHapticsEnabled,
 	loadHapticsPreference,
@@ -149,9 +151,44 @@ function ChipRow({
 }
 
 export default function ProfilScreen() {
-	const { user, survivorProfile, logout, deleteAccount } = useAuth();
+	const { user, token, survivorProfile, logout, deleteAccount } = useAuth();
 	const [deleting, setDeleting] = useState(false);
 	const [haptics, setHaptics] = useState(isHapticsEnabled());
+	const [recommendations, setRecommendations] = useState<
+		api.SessionTrainingRecommendationRead[] | null
+	>(null);
+
+	useEffect(() => {
+		let active = true;
+		if (!token || !user) {
+			return;
+		}
+		(async () => {
+			try {
+				const participantId = await resolveParticipantId(token, user.id);
+				if (participantId === null) {
+					if (active) {
+						setRecommendations([]);
+					}
+					return;
+				}
+				const list = await api.listParticipantRecommendations(
+					token,
+					participantId,
+				);
+				if (active) {
+					setRecommendations(list);
+				}
+			} catch {
+				if (active) {
+					setRecommendations([]);
+				}
+			}
+		})();
+		return () => {
+			active = false;
+		};
+	}, [token, user]);
 
 	useEffect(() => {
 		loadHapticsPreference().then(setHaptics);
@@ -325,6 +362,57 @@ export default function ProfilScreen() {
 					/>
 				</FadeIn>
 
+				{recommendations !== null ? (
+					<FadeIn delay={150}>
+						<Section title="Riwayat rekomendasi terapi" icon="book">
+							{recommendations.length === 0 ? (
+								<View style={styles.emptyRow}>
+									<Text style={[type.body, styles.emptyText]}>
+										Belum ada rekomendasi terapi untuk penyintas ini.
+									</Text>
+								</View>
+							) : null}
+							{recommendations.map((rec, index) => (
+								<Pressable
+									key={rec.id}
+									accessibilityRole="button"
+									accessibilityLabel={`Rekomendasi ${rec.primary_mode} sesi ${rec.session_id}`}
+									onPress={() =>
+										router.push({
+											pathname: "/sesi-hasil",
+											params: { sessionId: String(rec.session_id) },
+										})
+									}
+									style={({ pressed }) => [
+										styles.recRow,
+										index < recommendations.length - 1 && styles.rowDivider,
+										pressed && styles.pressed,
+									]}
+								>
+									<View style={styles.recBody}>
+										<Text style={[type.bodyStrong, styles.recMode]}>
+											{rec.primary_mode.toUpperCase()}
+											{rec.secondary_mode
+												? ` + ${rec.secondary_mode.toUpperCase()}`
+												: ""}
+										</Text>
+										<Text
+											style={[type.small, styles.rowValueEmpty]}
+											numberOfLines={2}
+										>
+											{rec.target_goal}
+										</Text>
+										<Text style={[type.small, styles.rowValueEmpty]}>
+											{formatDateTime(rec.created_at)}
+										</Text>
+									</View>
+									<Icon name="chevron" size={18} color={colors.textSecondary} />
+								</Pressable>
+							))}
+						</Section>
+					</FadeIn>
+				) : null}
+
 				<FadeIn delay={180}>
 					<Section title="Preferensi" icon="sparkles">
 						<View style={[styles.row, styles.switchRow]}>
@@ -402,7 +490,7 @@ const styles = StyleSheet.create({
 	content: {
 		paddingTop: spacing.xxl,
 		paddingHorizontal: layout.screenPadding,
-		paddingBottom: 88,
+		paddingBottom: 128,
 	},
 	hero: {
 		alignItems: "center",
@@ -508,6 +596,19 @@ const styles = StyleSheet.create({
 	emptyRow: {
 		paddingVertical: 18,
 	},
+	recRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 12,
+		paddingVertical: 14,
+	},
+	recBody: {
+		flex: 1,
+		gap: 2,
+	},
+	recMode: {
+		color: colors.primary,
+	},
 	emptyText: {
 		color: colors.textSecondary,
 	},
@@ -542,7 +643,8 @@ const styles = StyleSheet.create({
 		marginBottom: 12,
 	},
 	editAction: {
-		marginTop: 12,
+		marginTop: 16,
+		marginBottom: 32,
 	},
 	deleteButton: {
 		flexDirection: "row",

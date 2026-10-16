@@ -9,6 +9,7 @@ import { File } from "expo-file-system";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+	ActivityIndicator,
 	AppState,
 	Linking,
 	Pressable,
@@ -31,6 +32,7 @@ import Animated, {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
 import { Mascot } from "../components/mascot/Mascot";
+import { BottomSheet } from "../components/ui/BottomSheet";
 import { Button } from "../components/ui/Button";
 import { ProgressRing } from "../components/ui/ProgressRing";
 import { colors, radii, shadows, spacing, type } from "../constants/theme";
@@ -416,6 +418,48 @@ export default function SesiBerceritaScreen() {
 
 	const openMicrophoneSettings = () => void Linking.openSettings();
 
+	const leaveScreen = () => {
+		if (router.canGoBack()) {
+			router.back();
+			return;
+		}
+		router.replace("/sesi-pilih");
+	};
+
+	const [confirmExit, setConfirmExit] = useState(false);
+	const [cancelling, setCancelling] = useState(false);
+
+	const exitSession = () => {
+		if (phase === "uploading" || !token || !user || !Number.isFinite(numericSessionId)) {
+			leaveScreen();
+			return;
+		}
+		// Alert.alert tidak berfungsi di Expo Web (no-op), jadi konfirmasi
+		// memakai BottomSheet agar jalan di semua platform.
+		setConfirmExit(true);
+	};
+
+	const confirmCancelSession = () => {
+		if (!token || !user || !Number.isFinite(numericSessionId) || cancelling) {
+			return;
+		}
+		setCancelling(true);
+		void (async () => {
+			try {
+				await api.cancelSession(token, numericSessionId);
+				await clearActiveSession(user.id);
+			} catch (err) {
+				setError(api.errorMessage(err));
+				setCancelling(false);
+				setConfirmExit(false);
+				return;
+			}
+			setCancelling(false);
+			setConfirmExit(false);
+			leaveScreen();
+		})();
+	};
+
 	const exiting = reduceMotion
 		? FadeIn.duration(200)
 		: FadeInRight.duration(300).easing(Easing.out(Easing.cubic));
@@ -429,7 +473,7 @@ export default function SesiBerceritaScreen() {
 				<Pressable
 					accessibilityRole="button"
 					accessibilityLabel="Keluar dari sesi"
-					onPress={() => router.back()}
+					onPress={exitSession}
 					style={({ pressed }) => [styles.close, pressed && styles.pressed]}
 				>
 					<Icon name="logout" size={22} color={colors.textSecondary} />
@@ -616,6 +660,47 @@ export default function SesiBerceritaScreen() {
 					</Pressable>
 				) : null}
 			</View>
+
+			<BottomSheet
+				visible={confirmExit}
+				title="Batalkan sesi ini?"
+				onClose={() => {
+					if (!cancelling) {
+						setConfirmExit(false);
+					}
+				}}
+			>
+				<Text style={[type.body, styles.sheetText]}>
+					Rekaman yang belum diunggah akan hilang dan sesi dibatalkan.
+				</Text>
+				<View style={styles.sheetActions}>
+					<Button
+						label="Lanjutkan sesi"
+						variant="secondary"
+						fullWidth
+						disabled={cancelling}
+						onPress={() => setConfirmExit(false)}
+					/>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel="Ya, batalkan sesi ini"
+						accessibilityState={{ disabled: cancelling, busy: cancelling }}
+						disabled={cancelling}
+						onPress={confirmCancelSession}
+						style={({ pressed }) => [
+							styles.dangerButton,
+							(pressed || cancelling) && styles.pressed,
+						]}
+					>
+						{cancelling ? (
+							<ActivityIndicator color={colors.danger} />
+						) : null}
+						<Text style={[type.bodyStrong, styles.dangerText]}>
+							Ya, batalkan
+						</Text>
+					</Pressable>
+				</View>
+			</BottomSheet>
 		</SafeAreaView>
 	);
 }
@@ -640,6 +725,25 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		...shadows.pill,
+	},
+	sheetText: {
+		color: colors.textPrimary,
+	},
+	sheetActions: {
+		gap: 12,
+		marginTop: 16,
+	},
+	dangerButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		minHeight: 54,
+		borderRadius: radii.button,
+		backgroundColor: colors.dangerSoft,
+	},
+	dangerText: {
+		color: colors.danger,
 	},
 	dots: {
 		flexDirection: "row",

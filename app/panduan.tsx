@@ -1,7 +1,8 @@
 import { useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
+import { AppHeader } from "../components/ui/AppHeader";
 import { Photo } from "../components/photo/Photo";
 import type { PhotoKey } from "../components/photo/photoRegistry";
 import { Mascot } from "../components/mascot/Mascot";
@@ -11,7 +12,7 @@ import {
 	colors,
 	layout,
 	radii,
-	shadows,
+
 	spacing,
 	type,
 } from "../constants/theme";
@@ -67,17 +68,7 @@ export default function PanduanScreen() {
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top"]}>
-			<View style={styles.header}>
-				<Pressable
-					accessibilityRole="button"
-					accessibilityLabel="Kembali"
-					onPress={() => router.back()}
-					style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-				>
-					<Icon name="chevron" size={22} color={colors.textPrimary} />
-				</Pressable>
-				<Text style={[type.h2, styles.headerTitle]}>Panduan</Text>
-			</View>
+			<AppHeader title="Panduan" onBack={() => router.back()} />
 
 			<ScrollView
 				contentContainerStyle={styles.content}
@@ -100,9 +91,13 @@ export default function PanduanScreen() {
 							<View style={styles.articleRow}>
 								{article.photo ? (
 									<View style={styles.thumb}>
-										<Photo photo={article.photo} radius="sm" height={72} />
+										<Photo photo={article.photo} radius="sm" height={80} />
 									</View>
-								) : null}
+								) : (
+									<View style={styles.thumbPlaceholder}>
+										<Icon name="book" size={28} color={colors.primary} />
+									</View>
+								)}
 								<View style={styles.articleBody}>
 									<Text style={[type.bodyStrong, styles.articleTitle]}>
 										{article.title}
@@ -151,27 +146,6 @@ const styles = StyleSheet.create({
 		flex: 1,
 		backgroundColor: colors.background,
 	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 12,
-		paddingHorizontal: layout.screenPadding,
-		paddingTop: spacing.sm,
-		paddingBottom: spacing.sm,
-	},
-	back: {
-		width: 48,
-		height: 48,
-		borderRadius: 24,
-		backgroundColor: colors.surface,
-		alignItems: "center",
-		justifyContent: "center",
-		transform: [{ scaleX: -1 }],
-		...shadows.pill,
-	},
-	headerTitle: {
-		color: colors.textPrimary,
-	},
 	content: {
 		paddingHorizontal: layout.screenPadding,
 		paddingBottom: spacing.xxxl,
@@ -193,7 +167,17 @@ const styles = StyleSheet.create({
 		gap: 14,
 	},
 	thumb: {
-		width: 96,
+		width: 80,
+		flexShrink: 0,
+	},
+	thumbPlaceholder: {
+		width: 80,
+		height: 80,
+		borderRadius: 16,
+		backgroundColor: colors.primarySoft,
+		alignItems: "center",
+		justifyContent: "center",
+		flexShrink: 0,
 	},
 	articleBody: {
 		flex: 1,
@@ -214,13 +198,16 @@ const styles = StyleSheet.create({
 	},
 	hobbyRow: {
 		flexDirection: "row",
-		gap: 16,
+		gap: 12,
 	},
 	hobbyItem: {
+		flex: 1,
 		alignItems: "center",
+		minWidth: 0,
 	},
 	hobbyThumb: {
 		width: 72,
+		alignSelf: "center",
 	},
 	hobbyLabel: {
 		color: colors.textSecondary,

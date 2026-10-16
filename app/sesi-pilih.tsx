@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
 import { Mascot } from "../components/mascot/Mascot";
+import { AppHeader } from "../components/ui/AppHeader";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
 import { FadeIn } from "../components/ui/FadeIn";
@@ -18,7 +19,7 @@ import {
 	colors,
 	layout,
 	radii,
-	shadows,
+
 	spacing,
 	type,
 } from "../constants/theme";
@@ -156,17 +157,7 @@ export default function SesiPilihScreen() {
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-			<View style={styles.header}>
-				<Pressable
-					accessibilityRole="button"
-					accessibilityLabel="Kembali"
-					onPress={() => router.back()}
-					style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-				>
-					<Icon name="chevron" size={22} color={colors.textPrimary} />
-				</Pressable>
-				<Text style={[type.h2, styles.headerTitle]}>Pilih cerita</Text>
-			</View>
+			<AppHeader title="Pilih cerita" onBack={() => router.back()} />
 
 			<ScrollView
 				contentContainerStyle={styles.content}
@@ -255,27 +246,6 @@ const styles = StyleSheet.create({
 		flex: 1,
 		backgroundColor: colors.background,
 	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 12,
-		paddingHorizontal: layout.screenPadding,
-		paddingTop: spacing.sm,
-		paddingBottom: spacing.sm,
-	},
-	back: {
-		width: 48,
-		height: 48,
-		borderRadius: 24,
-		backgroundColor: colors.surface,
-		alignItems: "center",
-		justifyContent: "center",
-		transform: [{ scaleX: -1 }],
-		...shadows.pill,
-	},
-	headerTitle: {
-		color: colors.textPrimary,
-	},
 	content: {
 		paddingHorizontal: layout.screenPadding,
 		paddingBottom: spacing.xxxl,
@@ -317,6 +287,7 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 14,
+		minHeight: 72,
 	},
 	iconWrap: {
 		width: 52,

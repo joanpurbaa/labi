@@ -13,9 +13,8 @@ export function register(payload: RegisterPayload): Promise<UserRead> {
 export function login(payload: LoginPayload): Promise<TokenResponse> {
 	return request<TokenResponse>("/auth/login", {
 		method: "POST",
-		form: {
-			grant_type: "password",
-			username: payload.username,
+		body: {
+			email: payload.email,
 			password: payload.password,
 		},
 	});

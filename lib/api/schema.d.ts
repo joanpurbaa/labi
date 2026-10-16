@@ -141,6 +141,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/participants/{participant_id}/recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Participant Recommendations */
+        get: operations["list_participant_recommendations_api_v1_participants__participant_id__recommendations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stories": {
         parameters: {
             query?: never;
@@ -349,6 +366,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/training-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Training Logs */
+        get: operations["get_training_logs_api_v1_sessions__session_id__training_logs_get"];
+        put?: never;
+        /** Create Training Log */
+        post: operations["create_training_log_api_v1_sessions__session_id__training_logs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/recommendation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Session Recommendation */
+        get: operations["get_session_recommendation_api_v1_sessions__session_id__recommendation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Session Recommendations */
+        get: operations["list_session_recommendations_api_v1_sessions__session_id__recommendations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/stories": {
         parameters: {
             query?: never;
@@ -487,6 +556,31 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActionableGuidanceRead */
+        ActionableGuidanceRead: {
+            /** Urgency Level */
+            urgency_level: string;
+            /** Medical Alert */
+            medical_alert?: string | null;
+            /** Primary Mode */
+            primary_mode: string;
+            /** Secondary Mode */
+            secondary_mode?: string | null;
+            /** Target Goal */
+            target_goal: string;
+            /** Overall Interpretation */
+            overall_interpretation: string;
+            /**
+             * Home Trainings
+             * @default []
+             */
+            home_trainings: components["schemas"]["HomeTrainingItem"][];
+            /**
+             * Caregiver Daily Tips
+             * @default []
+             */
+            caregiver_daily_tips: string[];
+        };
         /**
          * AgeRange
          * @enum {string}
@@ -514,6 +608,12 @@ export interface components {
              * @default []
              */
             iu_suggestions: components["schemas"]["IuSuggestionRead"][];
+            actionable_guidance?: components["schemas"]["ActionableGuidanceRead"] | null;
+            /**
+             * Training Logs
+             * @default []
+             */
+            training_logs: components["schemas"]["TrainingLogRead"][];
             /**
              * Started At
              * Format: date-time
@@ -584,30 +684,6 @@ export interface components {
             /** Items */
             items: components["schemas"]["AssessmentItemIn"][];
         };
-        /** Body_login_api_v1_auth_login_post */
-        Body_login_api_v1_auth_login_post: {
-            /** Grant Type */
-            grant_type?: string | null;
-            /** Username */
-            username: string;
-            /**
-             * Password
-             * Format: password
-             */
-            password: string;
-            /**
-             * Scope
-             * @default
-             */
-            scope: string;
-            /** Client Id */
-            client_id?: string | null;
-            /**
-             * Client Secret
-             * Format: password
-             */
-            client_secret?: string | null;
-        };
         /** Body_upload_recording_api_v1_sessions__session_id__recording_post */
         Body_upload_recording_api_v1_sessions__session_id__recording_post: {
             /** File */
@@ -618,6 +694,26 @@ export interface components {
             recorded_at?: string | null;
             /** Transcript Text */
             transcript_text?: string | null;
+        };
+        /** CaregiverReportRead */
+        CaregiverReportRead: {
+            /** Headline */
+            headline: string;
+            /** Status Badge */
+            status_badge: string;
+            /** Assessment Summary */
+            assessment_summary: string;
+            /** Treatment Progress */
+            treatment_progress: string;
+            /**
+             * Key Findings
+             * @default []
+             */
+            key_findings: string[];
+            /** Caregiver Action Plan */
+            caregiver_action_plan: string;
+            /** Medical Alert */
+            medical_alert?: string | null;
         };
         /**
          * CommunicationGoal
@@ -665,6 +761,27 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HomeTrainingItem */
+        HomeTrainingItem: {
+            /** Training Mode */
+            training_mode: string;
+            /** Level */
+            level: number;
+            /** Level Title */
+            level_title: string;
+            /** Title */
+            title: string;
+            /** Target Area */
+            target_area: string;
+            /** Instructions */
+            instructions: string;
+            /** Frequency */
+            frequency: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Method Basis */
+            method_basis: string;
         };
         /** IUCreate */
         IUCreate: {
@@ -733,6 +850,16 @@ export interface components {
             /** Rationale */
             rationale?: string | null;
         };
+        /** LoginRequest */
+        LoginRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+        };
         /** PaginatedSessions */
         PaginatedSessions: {
             /** Data */
@@ -784,6 +911,15 @@ export interface components {
             /** Session Count */
             session_count: number;
             /**
+             * Total Trainings Completed
+             * @default 0
+             */
+            total_trainings_completed: number;
+            /** Current Recommended Mode */
+            current_recommended_mode?: string | null;
+            /** Current Target Goal */
+            current_target_goal?: string | null;
+            /**
              * Series
              * @default []
              */
@@ -791,6 +927,9 @@ export interface components {
             baseline?: components["schemas"]["TrendPoint"] | null;
             latest?: components["schemas"]["TrendPoint"] | null;
             deltas?: components["schemas"]["TrendDelta"] | null;
+            /** Progression Note */
+            progression_note?: string | null;
+            caregiver_report?: components["schemas"]["CaregiverReportRead"] | null;
         };
         /**
          * PracticeMode
@@ -938,6 +1077,39 @@ export interface components {
              */
             created_at: string;
         };
+        /** SessionTrainingRecommendationRead */
+        SessionTrainingRecommendationRead: {
+            /** Id */
+            id: number;
+            /** Session Id */
+            session_id: number;
+            /** Run Id */
+            run_id: number;
+            /** Participant Id */
+            participant_id: number;
+            /** Urgency Level */
+            urgency_level: string;
+            /** Primary Mode */
+            primary_mode: string;
+            /** Secondary Mode */
+            secondary_mode?: string | null;
+            /** Target Goal */
+            target_goal: string;
+            /** Overall Interpretation */
+            overall_interpretation: string;
+            /** Medical Alert */
+            medical_alert?: string | null;
+            /**
+             * Home Trainings
+             * @default []
+             */
+            home_trainings: components["schemas"]["HomeTrainingItem"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** SilentPauseRead */
         SilentPauseRead: {
             /** Ordinal */
@@ -948,6 +1120,8 @@ export interface components {
             end_ms: number;
             /** Duration Ms */
             duration_ms: number;
+            /** Duration Log */
+            duration_log?: number | null;
         };
         /** SpeechMetricsRead */
         SpeechMetricsRead: {
@@ -977,6 +1151,14 @@ export interface components {
             silent_pause_median_ms?: number | null;
             /** Silent Pause Sd Ms */
             silent_pause_sd_ms?: number | null;
+            /** Silent Pause Mean Log */
+            silent_pause_mean_log?: number | null;
+            /** Silent Pause Median Log */
+            silent_pause_median_log?: number | null;
+            /** Silent Pause Sd Log */
+            silent_pause_sd_log?: number | null;
+            /** Silent Pause Total Log */
+            silent_pause_total_log?: number | null;
             /** Speech Rate */
             speech_rate?: number | null;
             /** Articulation Rate */
@@ -1140,6 +1322,56 @@ export interface components {
              */
             token_type: string;
         };
+        /** TrainingLogCreate */
+        TrainingLogCreate: {
+            /**
+             * Training Mode
+             * @description sfa | srt | cst
+             */
+            training_mode: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @default completed
+             */
+            status: string;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** TrainingLogRead */
+        TrainingLogRead: {
+            /** Id */
+            id: number;
+            /** Session Id */
+            session_id: number;
+            /** Participant Id */
+            participant_id: number;
+            /** Caregiver Id */
+            caregiver_id: number;
+            /** Training Mode */
+            training_mode: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: string;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Logged At
+             * Format: date-time
+             */
+            logged_at: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** TranscriptRead */
         TranscriptRead: {
             /** Id */
@@ -1197,6 +1429,10 @@ export interface components {
         TrendPoint: {
             /** Session Id */
             session_id: number;
+            /** Session Number */
+            session_number?: number | null;
+            /** Session Label */
+            session_label?: string | null;
             /** Completed At */
             completed_at?: string | null;
             /** Iu Recall Percent */
@@ -1215,6 +1451,19 @@ export interface components {
             syllable_count?: number | null;
             /** Word Count */
             word_count?: number | null;
+            /** Recommended Mode */
+            recommended_mode?: string | null;
+            /** Training Target Goal */
+            training_target_goal?: string | null;
+            /**
+             * Trainings Completed Count
+             * @default 0
+             */
+            trainings_completed_count: number;
+            /** Urgency Level */
+            urgency_level?: string | null;
+            /** Clinical Interpretation */
+            clinical_interpretation?: string | null;
         };
         /** UserCreate */
         UserCreate: {
@@ -1365,7 +1614,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/x-www-form-urlencoded": components["schemas"]["Body_login_api_v1_auth_login_post"];
+                "application/json": components["schemas"]["LoginRequest"];
             };
         };
         responses: {
@@ -1511,6 +1760,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ParticipantTrendRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_participant_recommendations_api_v1_participants__participant_id__recommendations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                participant_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTrainingRecommendationRead"][];
                 };
             };
             /** @description Validation Error */
@@ -2034,6 +2314,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalysisRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_training_logs_api_v1_sessions__session_id__training_logs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingLogRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_training_log_api_v1_sessions__session_id__training_logs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrainingLogCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingLogRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_recommendation_api_v1_sessions__session_id__recommendation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTrainingRecommendationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_session_recommendations_api_v1_sessions__session_id__recommendations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTrainingRecommendationRead"][];
                 };
             };
             /** @description Validation Error */

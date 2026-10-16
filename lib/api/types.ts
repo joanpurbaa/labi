@@ -17,7 +17,7 @@ export type TokenResponse = Schemas["Token"];
 export type RegisterPayload = Schemas["UserCreate"];
 
 export type LoginPayload = {
-	username: string;
+	email: string;
 	password: string;
 };
 
@@ -71,6 +71,12 @@ export type CompleteOut = Schemas["CompleteOut"];
 
 export type ResultItemRead = Schemas["ResultItemRead"];
 export type ResultRead = Schemas["ResultRead"];
+
+export type SessionTrainingRecommendationRead =
+	Schemas["SessionTrainingRecommendationRead"];
+export type HomeTrainingItem = Schemas["HomeTrainingItem"];
+export type TrainingLogCreate = Schemas["TrainingLogCreate"];
+export type TrainingLogRead = Schemas["TrainingLogRead"];
 
 export type TrendPoint = Schemas["TrendPoint"];
 export type TrendDelta = Schemas["TrendDelta"];

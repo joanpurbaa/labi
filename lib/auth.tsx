@@ -208,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			// personalisasi penyintas, tanpa lewat halaman login.
 			try {
 				const session = await api.login({
-					username: cleanEmail,
+					email: cleanEmail,
 					password,
 				});
 				if (!session?.access_token) {
@@ -252,7 +252,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 			try {
 				const session = await api.login({
-					username: cleanEmail,
+					email: cleanEmail,
 					password,
 				});
 				if (!session?.access_token) {

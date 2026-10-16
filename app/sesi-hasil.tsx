@@ -11,9 +11,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
 import { Mascot } from "../components/mascot/Mascot";
+import { AppHeader } from "../components/ui/AppHeader";
+import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { FadeIn } from "../components/ui/FadeIn";
 import { StatusChip } from "../components/ui/StatusChip";
+import { ChoiceGroup } from "../components/ChoiceGroup";
+import { TextField } from "../components/TextField";
 import {
 	colors,
 	layout,
@@ -24,9 +28,16 @@ import {
 	type StatusTone,
 } from "../constants/theme";
 import * as api from "../lib/api";
-import type { ResultRead, SpeechMetricsRead } from "../lib/api";
+import type {
+	ResultRead,
+	SessionTrainingRecommendationRead,
+	SpeechMetricsRead,
+	TrainingLogRead,
+} from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { clearActiveSession } from "../lib/activeSession";
+import { successHaptic } from "../lib/haptics";
+import { formatSessionDate } from "../lib/sessionDisplay";
 
 const STATUS_META: Record<
 	string,
@@ -45,8 +56,37 @@ export default function SesiHasilScreen() {
 	const [result, setResult] = useState<ResultRead | null>(null);
 	const [metrics, setMetrics] = useState<SpeechMetricsRead | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [recommendation, setRecommendation] =
+		useState<SessionTrainingRecommendationRead | null>(null);
+	const [logs, setLogs] = useState<TrainingLogRead[]>([]);
+	const [logMode, setLogMode] = useState("sfa");
+	const [logTitle, setLogTitle] = useState("");
+	const [logStatus, setLogStatus] = useState("completed");
+	const [logDuration, setLogDuration] = useState("");
+	const [logNotes, setLogNotes] = useState("");
+	const [logError, setLogError] = useState<string | null>(null);
+	const [logSubmitting, setLogSubmitting] = useState(false);
 
 	const numericSessionId = Number(sessionId);
+
+const MODE_OPTIONS = [
+		{ value: "sfa", label: "SFA" },
+		{ value: "srt", label: "SRT" },
+		{ value: "cst", label: "CST" },
+	];
+
+	const LOG_STATUS_OPTIONS = [
+		{ value: "completed", label: "Selesai" },
+		{ value: "partial", label: "Sebagian" },
+		{ value: "skipped", label: "Dilewati" },
+	];
+
+	function logStatusLabel(status: string): string {
+		return (
+			LOG_STATUS_OPTIONS.find((option) => option.value === status)?.label ??
+			status
+		);
+	}
 
 	useEffect(() => {
 		let active = true;
@@ -71,13 +111,17 @@ export default function SesiHasilScreen() {
 					return;
 				}
 				await clearActiveSession(user.id);
-				const [loaded, analysis] = await Promise.all([
+				const [loaded, analysis, rec, sessionLogs] = await Promise.all([
 					api.getResult(token, numericSessionId, controller.signal),
 					api.getAnalysis(token, numericSessionId, controller.signal).catch(() => null),
+					api.getSessionRecommendation(token, numericSessionId, controller.signal),
+					api.listTrainingLogs(token, numericSessionId, controller.signal).catch(() => []),
 				]);
 				if (active) {
 					setResult(loaded);
 					setMetrics(analysis?.speech_metrics ?? null);
+					setRecommendation(rec);
+					setLogs(sessionLogs);
 				}
 			} catch (err) {
 				if (active) {
@@ -94,19 +138,49 @@ export default function SesiHasilScreen() {
 	const loading = result === null && error === null;
 	const percent = result?.iu_recall_percent;
 
+	const submitLog = async () => {
+		if (!token || logSubmitting || !Number.isFinite(numericSessionId)) {
+			return;
+		}
+		const title = logTitle.trim();
+		if (!title) {
+			setLogError("Judul latihan wajib diisi.");
+			return;
+		}
+		let duration: number | null = null;
+		if (logDuration.trim()) {
+			const parsed = Number(logDuration.trim());
+			if (!Number.isFinite(parsed) || parsed < 1 || parsed > 180) {
+				setLogError("Durasi 1–180 menit.");
+				return;
+			}
+			duration = Math.round(parsed);
+		}
+		setLogSubmitting(true);
+		setLogError(null);
+		try {
+			const created = await api.createTrainingLog(token, numericSessionId, {
+				training_mode: logMode,
+				title,
+				status: logStatus,
+				duration_minutes: duration,
+				notes: logNotes.trim() ? logNotes.trim() : null,
+			});
+			setLogs((current) => [created, ...current]);
+			setLogTitle("");
+			setLogDuration("");
+			setLogNotes("");
+			successHaptic();
+		} catch (err) {
+			setLogError(api.errorMessage(err));
+		} finally {
+			setLogSubmitting(false);
+		}
+	};
+
 	return (
 		<SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-			<View style={styles.header}>
-				<Pressable
-					accessibilityRole="button"
-					accessibilityLabel="Kembali"
-					onPress={() => router.replace("/")}
-					style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-				>
-					<Icon name="chevron" size={22} color={colors.textPrimary} />
-				</Pressable>
-				<Text style={[type.h2, styles.headerTitle]}>Hasil cerita</Text>
-			</View>
+			<AppHeader title="Hasil cerita" onBack={() => router.replace("/")} />
 
 			<ScrollView
 				contentContainerStyle={styles.content}
@@ -197,6 +271,188 @@ export default function SesiHasilScreen() {
 								</Card>
 							);
 						})}
+
+						<Text style={[type.h3, styles.sectionTitle]}>
+							Rekomendasi terapi
+						</Text>
+
+						{recommendation ? (
+							<>
+								<Card style={styles.blockCard}>
+									<View style={styles.modeRow}>
+										<StatusChip tone="stable" label={recommendation.primary_mode.toUpperCase()} />
+										{recommendation.secondary_mode ? (
+											<StatusChip tone="watch" label={recommendation.secondary_mode.toUpperCase()} />
+										) : null}
+									</View>
+									<Text style={[type.bodyStrong, styles.itemText]}>
+										{recommendation.target_goal}
+									</Text>
+									<Text style={[type.body, styles.recText]}>
+										{recommendation.overall_interpretation}
+									</Text>
+								</Card>
+
+								{recommendation.medical_alert ? (
+									<View style={styles.warnBox}>
+										<Icon name="info" size={18} color={colors.danger} />
+										<Text style={[type.body, styles.warnText]}>
+											{recommendation.medical_alert}
+										</Text>
+									</View>
+								) : null}
+
+								{recommendation.home_trainings.map((training, index) => (
+									<Card key={`${training.level}-${index}`} style={styles.blockCard}>
+										<Text style={[type.small, styles.levelLabel]}>
+											{training.level_title}
+										</Text>
+										<Text style={[type.bodyStrong, styles.itemText]}>
+											{training.title}
+										</Text>
+										<Text style={[type.small, styles.recMeta]}>
+											{training.target_area} · {training.frequency} · {training.duration_minutes} menit
+										</Text>
+										<Text style={[type.body, styles.recText]}>
+											{training.instructions}
+										</Text>
+										<Text style={[type.small, styles.recMeta]}>
+											{training.method_basis}
+										</Text>
+										<Pressable
+											accessibilityRole="button"
+											accessibilityLabel={`Catat latihan ${training.title}`}
+											onPress={() => {
+												setLogMode(training.training_mode);
+												setLogTitle(training.title);
+												setLogError(null);
+											}}
+											style={({ pressed }) => [
+												styles.useTraining,
+												pressed && styles.pressed,
+											]}
+										>
+											<Text style={[type.bodyStrong, styles.useTrainingText]}>
+												Catat latihan ini
+											</Text>
+										</Pressable>
+									</Card>
+								))}
+							</>
+						) : (
+							<Card style={styles.blockCard}>
+								<Text style={[type.body, styles.recText]}>
+									Rekomendasi terapi belum tersedia untuk sesi ini.
+								</Text>
+							</Card>
+						)}
+
+						<Text style={[type.h3, styles.sectionTitle]}>
+							Catat latihan di rumah
+						</Text>
+						<Card style={styles.blockCard}>
+							<Text style={[type.label, styles.fieldLabel]}>Mode latihan</Text>
+							<View style={styles.group}>
+								<ChoiceGroup
+									options={MODE_OPTIONS}
+									selected={[logMode]}
+									onChange={(values) => {
+										if (values[0]) {
+											setLogMode(values[0]);
+										}
+									}}
+								/>
+							</View>
+							<TextField
+								label="Judul latihan"
+								value={logTitle}
+								onChangeText={(value) => {
+									setLogTitle(value);
+									if (logError) {
+										setLogError(null);
+									}
+								}}
+								placeholder="Contoh: Tebak ciri objek sekitar"
+								returnKeyType="next"
+							/>
+							<Text style={[type.label, styles.fieldLabel]}>Status</Text>
+							<View style={styles.group}>
+								<ChoiceGroup
+									options={LOG_STATUS_OPTIONS}
+									selected={[logStatus]}
+									onChange={(values) => {
+										if (values[0]) {
+											setLogStatus(values[0]);
+										}
+									}}
+								/>
+							</View>
+							<TextField
+								label="Durasi (menit, opsional)"
+								value={logDuration}
+								onChangeText={setLogDuration}
+								placeholder="Contoh: 15"
+								keyboardType="numeric"
+								returnKeyType="next"
+							/>
+							<TextField
+								label="Catatan (opsional)"
+								value={logNotes}
+								onChangeText={setLogNotes}
+								placeholder="Contoh: lancar menyebutkan ciri sendok"
+								multiline
+								returnKeyType="done"
+								onSubmitEditing={submitLog}
+							/>
+							{logError ? (
+								<Text style={[type.body, styles.logError]}>{logError}</Text>
+							) : null}
+							<Button
+								label="Simpan catatan latihan"
+								onPress={submitLog}
+								loading={logSubmitting}
+								fullWidth
+							/>
+						</Card>
+
+						<Text style={[type.h3, styles.sectionTitle]}>
+							Riwayat latihan sesi ini
+						</Text>
+						{logs.length === 0 ? (
+							<Card style={styles.blockCard}>
+								<Text style={[type.body, styles.recText]}>
+									Belum ada catatan latihan untuk sesi ini.
+								</Text>
+							</Card>
+						) : null}
+						{logs.map((log) => (
+							<Card key={log.id} style={styles.blockCard}>
+								<View style={styles.logRow}>
+									<View style={styles.logBody}>
+										<Text style={[type.bodyStrong, styles.itemText]}>
+											{log.title}
+										</Text>
+										<Text style={[type.small, styles.recMeta]}>
+											{logStatusLabel(log.status)}
+											{typeof log.duration_minutes === "number"
+												? ` · ${log.duration_minutes} menit`
+												: ""}
+											{" · "}
+											{formatSessionDate(log.logged_at)}
+										</Text>
+										{log.notes ? (
+											<Text style={[type.body, styles.recText]}>
+												{log.notes}
+											</Text>
+										) : null}
+									</View>
+									<StatusChip
+										tone={log.status === "completed" ? "stable" : "watch"}
+										label={logStatusLabel(log.status)}
+									/>
+								</View>
+							</Card>
+						))}
 					</>
 				) : null}
 			</ScrollView>
@@ -239,27 +495,6 @@ const styles = StyleSheet.create({
 	safe: {
 		flex: 1,
 		backgroundColor: colors.background,
-	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 12,
-		paddingHorizontal: layout.screenPadding,
-		paddingTop: spacing.sm,
-		paddingBottom: spacing.sm,
-	},
-	back: {
-		width: 48,
-		height: 48,
-		borderRadius: 24,
-		backgroundColor: colors.surface,
-		alignItems: "center",
-		justifyContent: "center",
-		transform: [{ scaleX: -1 }],
-		...shadows.pill,
-	},
-	headerTitle: {
-		color: colors.textPrimary,
 	},
 	content: {
 		paddingHorizontal: layout.screenPadding,
@@ -340,6 +575,70 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 12,
+	},
+	blockCard: {
+		marginBottom: 10,
+	},
+	sectionTitle: {
+		color: colors.textPrimary,
+		marginTop: spacing.xl,
+		marginBottom: 12,
+	},
+	modeRow: {
+		flexDirection: "row",
+		gap: 8,
+		marginBottom: 10,
+	},
+	recText: {
+		color: colors.textPrimary,
+		marginTop: 8,
+	},
+	recMeta: {
+		color: colors.textSecondary,
+		marginTop: 6,
+	},
+	levelLabel: {
+		color: colors.primary,
+		fontWeight: "600",
+	},
+	warnBox: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 8,
+		padding: 14,
+		borderRadius: radii.cardSmall,
+		backgroundColor: colors.dangerSoft,
+		marginBottom: 10,
+	},
+	warnText: {
+		flex: 1,
+		color: colors.danger,
+	},
+	useTraining: {
+		marginTop: 12,
+		alignSelf: "flex-start",
+	},
+	useTrainingText: {
+		color: colors.primary,
+	},
+	fieldLabel: {
+		color: colors.textPrimary,
+		marginBottom: 10,
+	},
+	group: {
+		marginBottom: 4,
+	},
+	logError: {
+		color: colors.danger,
+		marginBottom: 12,
+	},
+	logRow: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 12,
+	},
+	logBody: {
+		flex: 1,
 	},
 	itemRow: {
 		flexDirection: "row",

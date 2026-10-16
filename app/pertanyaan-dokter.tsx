@@ -1,9 +1,20 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+	ActivityIndicator,
+	Pressable,
+	ScrollView,
+	StyleSheet,
+	Text,
+	View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Icon } from "../components/Icon";
+import { Icon, type IconName } from "../components/Icon";
 import { Mascot } from "../components/mascot/Mascot";
+import { AppHeader } from "../components/ui/AppHeader";
+import { Button } from "../components/ui/Button";
+import { TextField } from "../components/TextField";
 import { Card } from "../components/ui/Card";
 import { FadeIn } from "../components/ui/FadeIn";
 import { IconBadge } from "../components/ui/IconBadge";
@@ -11,49 +22,219 @@ import {
 	colors,
 	layout,
 	radii,
-	shadows,
+
 	spacing,
 	type,
 } from "../constants/theme";
-import { DUMMY_DOCTOR_QUESTIONS } from "../lib/dummyData";
+import * as api from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { formatName } from "../lib/formatName";
+import { resolveParticipantId } from "../lib/participant";
+import { formatSessionDate } from "../lib/sessionDisplay";
 
-function buildState() {
-	const map: Record<string, boolean> = {};
-	for (const group of DUMMY_DOCTOR_QUESTIONS) {
-		for (const item of group.items) {
-			map[item.id] = item.done;
-		}
+type QuestionItem = {
+	id: string;
+	question: string;
+	note?: string;
+};
+
+type QuestionGroup = {
+	id: string;
+	title: string;
+	icon: IconName;
+	items: QuestionItem[];
+};
+
+function storageKey(userId: number): string {
+	return `@labi/doctor-questions/${userId}`;
+}
+
+function buildSuggestions(
+	survivorName: string,
+	sessions: api.SessionHistoryItem[],
+	deltaRecall: number | null,
+	sessionCount: number,
+): QuestionItem[] {
+	const items: QuestionItem[] = [];
+	const completed = sessions.filter((session) => session.completed_at);
+	if (deltaRecall !== null && deltaRecall < -3) {
+		items.push({
+			id: "s-trend-down",
+			question: `Ingatan ${survivorName} turun ${Math.abs(Math.round(deltaRecall))}% dibanding sesi pertama, apakah masih wajar?`,
+			note: `Berdasarkan ${sessionCount} sesi tercatat.`,
+		});
 	}
-	return map;
+	const low = completed.find(
+		(session) =>
+			typeof session.iu_recall_percent === "number" &&
+			session.iu_recall_percent < 40,
+	);
+	if (low) {
+		items.push({
+			id: `s-low-${low.id}`,
+			question: `Sesi ${formatSessionDate(low.completed_at)} hanya ${Math.round(low.iu_recall_percent as number)}% yang diingat, apa yang perlu diperbaiki?`,
+			note: low.story_title ?? undefined,
+		});
+	}
+	if (completed.length > 0 && items.length === 0) {
+		const last = completed[0];
+		const recall =
+			typeof last.iu_recall_percent === "number"
+				? `${Math.round(last.iu_recall_percent)}% diingat`
+				: "belum dinilai";
+		items.push({
+			id: "s-review",
+			question: `Minta evaluasi dokter atas ${completed.length} sesi terakhir (${recall})?`,
+			note: `Sesi terakhir ${formatSessionDate(last.completed_at)}.`,
+		});
+	}
+	return items;
 }
 
 export default function PertanyaanDokterScreen() {
 	const router = useRouter();
-	const [checked, setChecked] = useState<Record<string, boolean>>(buildState);
+	const { token, user, survivorProfile } = useAuth();
+	const [groups, setGroups] = useState<QuestionGroup[] | null>(null);
+	const [checked, setChecked] = useState<Record<string, boolean>>({});
+	const [draft, setDraft] = useState("");
+	const [ready, setReady] = useState(false);
 
-	const total = DUMMY_DOCTOR_QUESTIONS.reduce(
+	const survivorName = formatName(
+		survivorProfile?.survivorNickname ?? "penyintas",
+	);
+
+	useEffect(() => {
+		let active = true;
+		if (!token || !user) {
+			return;
+		}
+		(async () => {
+			try {
+				const [stored, participantId] = await Promise.all([
+					AsyncStorage.getItem(storageKey(user.id)),
+					resolveParticipantId(token, user.id),
+				]);
+				const parsed = stored ? JSON.parse(stored) as {
+					custom?: { id: string; question: string }[];
+					checked?: Record<string, boolean>;
+				} : null;
+				const custom = Array.isArray(parsed?.custom) ? parsed!.custom : [];
+				const [sessions, trend] = await Promise.all([
+					api.listSessions(token, {
+						...(participantId === null ? {} : { participant_id: participantId }),
+						page: 1,
+						page_size: 5,
+					}),
+					participantId === null
+						? Promise.resolve(null)
+						: api.getParticipantTrend(token, participantId).catch(() => null),
+				]);
+				const baseline = trend?.baseline?.iu_recall_percent ?? null;
+				const latest = trend?.latest?.iu_recall_percent ?? null;
+				const delta =
+					baseline !== null && latest !== null ? latest - baseline : null;
+				const suggestions = buildSuggestions(
+					survivorName,
+					sessions.data,
+					delta,
+					trend?.session_count ?? 0,
+				);
+				if (active) {
+					const next: QuestionGroup[] = [];
+					if (suggestions.length > 0) {
+						next.push({
+							id: "saran",
+							title: "Saran dari data sesi",
+							icon: "chart",
+							items: suggestions,
+						});
+					}
+					next.push({
+						id: "catatan",
+						title: "Catatanmu",
+						icon: "heart",
+						items: custom,
+					});
+					setGroups(next);
+					setChecked(parsed?.checked ?? {});
+				}
+			} finally {
+				if (active) {
+					setReady(true);
+				}
+			}
+		})();
+		return () => {
+			active = false;
+		};
+	}, [token, user, survivorName]);
+
+	const persist = async (
+		custom: { id: string; question: string }[],
+		nextChecked: Record<string, boolean>,
+	) => {
+		if (!user) {
+			return;
+		}
+		try {
+			await AsyncStorage.setItem(
+				storageKey(user.id),
+				JSON.stringify({ custom, checked: nextChecked }),
+			);
+		} catch {
+			// penyimpanan lokal gagal — status layar tetap berlaku sesi ini
+		}
+	};
+
+	const total = (groups ?? []).reduce(
 		(sum, group) => sum + group.items.length,
 		0,
 	);
 	const done = Object.values(checked).filter(Boolean).length;
 
 	const toggle = (id: string) => {
-		setChecked((current) => ({ ...current, [id]: !current[id] }));
+		setChecked((current) => {
+			const next = { ...current, [id]: !current[id] };
+			const custom = (groups ?? [])
+				.find((group) => group.id === "catatan")
+				?.items.map((item) => ({ id: item.id, question: item.question })) ?? [];
+			void persist(custom, next);
+			return next;
+		});
+	};
+
+	const addCustom = () => {
+		const question = draft.trim();
+		if (!question) {
+			return;
+		}
+		const entry = { id: `c-${Date.now()}`, question };
+		setGroups((current) => {
+			const next = (current ?? []).map((group) =>
+				group.id === "catatan"
+					? { ...group, items: [...group.items, entry] }
+					: group,
+			);
+			const withGroup = next.some((group) => group.id === "catatan")
+				? next
+				: [
+					...next,
+					{ id: "catatan", title: "Catatanmu", icon: "heart" as IconName, items: [entry] },
+				];
+			void persist(
+				withGroup
+					.find((group) => group.id === "catatan")
+					?.items.map((item) => ({ id: item.id, question: item.question })) ?? [],
+				checked,
+			);
+			return withGroup;
+		});
+		setDraft("");
 	};
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top"]}>
-			<View style={styles.header}>
-				<Pressable
-					accessibilityRole="button"
-					accessibilityLabel="Kembali"
-					onPress={() => router.back()}
-					style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-				>
-					<Icon name="chevron" size={22} color={colors.textPrimary} />
-				</Pressable>
-				<Text style={[type.h2, styles.headerTitle]}>Pertanyaan untuk dokter</Text>
-			</View>
+			<AppHeader title="Pertanyaan untuk dokter" onBack={() => router.back()} />
 
 			<ScrollView
 				contentContainerStyle={styles.content}
@@ -82,7 +263,22 @@ export default function PertanyaanDokterScreen() {
 					</View>
 				</Card>
 
-				{DUMMY_DOCTOR_QUESTIONS.map((group, groupIndex) => (
+				{!ready ? (
+					<View style={styles.loadingRow}>
+						<ActivityIndicator color={colors.primary} />
+					</View>
+				) : null}
+
+				{ready && total === 0 ? (
+					<Card style={styles.progressCard}>
+						<Text style={[type.body, styles.emptyText]}>
+							Belum ada saran pertanyaan. Selesaikan satu sesi dulu, atau
+							tambahkan pertanyaanmu sendiri di bawah.
+						</Text>
+					</Card>
+				) : null}
+
+				{(groups ?? []).map((group, groupIndex) => (
 					<FadeIn key={group.id} delay={groupIndex * 60}>
 						<View style={styles.group}>
 							<View style={styles.groupHead}>
@@ -146,6 +342,25 @@ export default function PertanyaanDokterScreen() {
 					</FadeIn>
 				))}
 
+				<View style={styles.addRow}>
+					<View style={styles.addField}>
+						<TextField
+							label="Pertanyaan baru"
+							value={draft}
+							onChangeText={setDraft}
+							placeholder="Tulis hal yang ingin ditanyakan"
+							returnKeyType="done"
+							onSubmitEditing={addCustom}
+						/>
+					</View>
+					<Button
+						label="Tambah"
+						onPress={addCustom}
+						disabled={draft.trim().length === 0}
+						style={styles.addButton}
+					/>
+				</View>
+
 				<Pressable
 					accessibilityRole="button"
 					accessibilityLabel="Buka laporan untuk dokter"
@@ -162,8 +377,8 @@ export default function PertanyaanDokterScreen() {
 				<View style={styles.note}>
 					<Icon name="info" size={16} color={colors.textSecondary} />
 					<Text style={[type.small, styles.noteText]}>
-						Daftar ini contoh. Sesuaikan dengan yang paling penting bagi{" "}
-						Bu Siti.
+						Tandai hal yang ingin kamu tanyakan, agar tidak terlewat saat
+						bertemu dokter.
 					</Text>
 				</View>
 			</ScrollView>
@@ -175,28 +390,6 @@ const styles = StyleSheet.create({
 	safe: {
 		flex: 1,
 		backgroundColor: colors.background,
-	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 12,
-		paddingHorizontal: layout.screenPadding,
-		paddingTop: spacing.sm,
-		paddingBottom: spacing.sm,
-	},
-	back: {
-		width: 48,
-		height: 48,
-		borderRadius: 24,
-		backgroundColor: colors.surface,
-		alignItems: "center",
-		justifyContent: "center",
-		transform: [{ scaleX: -1 }],
-		...shadows.pill,
-	},
-	headerTitle: {
-		color: colors.textPrimary,
-		flexShrink: 1,
 	},
 	content: {
 		paddingHorizontal: layout.screenPadding,
@@ -223,6 +416,26 @@ const styles = StyleSheet.create({
 	},
 	progressHint: {
 		color: colors.textSecondary,
+	},
+	loadingRow: {
+		paddingVertical: 24,
+		alignItems: "center",
+	},
+	emptyText: {
+		color: colors.textSecondary,
+	},
+	addRow: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 10,
+		marginTop: spacing.xxl,
+		marginBottom: spacing.lg,
+	},
+	addField: {
+		flex: 1,
+	},
+	addButton: {
+		marginTop: 26,
 	},
 	group: {
 		marginBottom: layout.sectionGap,
