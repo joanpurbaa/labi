@@ -40,6 +40,13 @@ export {
 	upsertSurvivorProfile,
 } from "./survivor";
 export { getStory, listStories } from "./stories";
+export {
+	createTrainingLog,
+	getSessionRecommendation,
+	listParticipantRecommendations,
+	listSessionRecommendations,
+	listTrainingLogs,
+} from "./training";
 export { CAREGIVER_ROLE } from "./types";
 export type {
 	AgeRange,
@@ -54,6 +61,7 @@ export type {
 	CompleteOut,
 	CompleteResult,
 	ConversationTopic,
+	HomeTrainingItem,
 	IURead,
 	InstructionPreference,
 	IuSuggestionRead,
@@ -70,6 +78,9 @@ export type {
 	RegisterPayload,
 	ResultItemRead,
 	ResultRead,
+	SessionTrainingRecommendationRead,
+	TrainingLogCreate,
+	TrainingLogRead,
 	SessionCreate,
 	SessionHistoryItem,
 	SessionRead,

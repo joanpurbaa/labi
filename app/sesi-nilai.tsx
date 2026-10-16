@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
 	ActivityIndicator,
@@ -11,13 +11,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "../components/Icon";
+import { AppHeader } from "../components/ui/AppHeader";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import { StatusChip } from "../components/ui/StatusChip";
 import {
 	colors,
 	layout,
 	radii,
-	shadows,
+
 	spacing,
 	type,
 } from "../constants/theme";
@@ -38,18 +40,27 @@ const STATUS_OPTIONS: {
 	bg: string;
 	fg: string;
 }[] = [
-	{ value: "met", label: "Diingat", bg: colors.leafSoft, fg: colors.leafDark },
-	{ value: "not_met", label: "Belum", bg: colors.dangerSoft, fg: colors.danger },
-	{
-		value: "unclear",
-		label: "Tidak jelas",
-		bg: colors.marigoldSoft,
-		fg: colors.amberDark,
-	},
-];
+		{ value: "met", label: "Diingat", bg: colors.leafSoft, fg: colors.leafDark },
+		{ value: "not_met", label: "Belum", bg: colors.dangerSoft, fg: colors.danger },
+	];
 
 function isAssessmentStatus(value: string): value is AssessmentStatus {
 	return value === "met" || value === "not_met" || value === "unclear";
+}
+
+function toBinaryStatus(status: AssessmentStatus): AssessmentStatus {
+	return status === "unclear" ? "not_met" : status;
+}
+
+function sanitizeStatuses(
+	statuses: Record<number, AssessmentStatus>,
+): Record<number, AssessmentStatus> {
+	return Object.fromEntries(
+		Object.entries(statuses).map(([key, status]) => [
+			key,
+			toBinaryStatus(status),
+		]),
+	) as Record<number, AssessmentStatus>;
 }
 
 export default function SesiNilaiScreen() {
@@ -67,9 +78,6 @@ export default function SesiNilaiScreen() {
 	const [changedIds, setChangedIds] = useState<number[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
-	const scrollRef = useRef<ScrollView>(null);
-	const itemOffsets = useRef<Record<number, number>>({});
-	const [highlightedIds, setHighlightedIds] = useState<number[]>([]);
 	const [draftSaved, setDraftSaved] = useState(false);
 
 	const numericStoryId = Number(storyId);
@@ -111,10 +119,16 @@ export default function SesiNilaiScreen() {
 				const draft = stored ? JSON.parse(stored) as { statuses?: Record<number, AssessmentStatus>; changedIds?: number[]; applied?: boolean } : null;
 				if (active) {
 					setSuggestions(suggestionsById);
-					const suggestedStatuses = Object.fromEntries(analysis.iu_suggestions
-						.filter((item) => isAssessmentStatus(item.suggested_status))
-						.map((item) => [item.iu_id, item.suggested_status as AssessmentStatus]));
-					setStatuses(draft?.statuses ?? suggestedStatuses);
+					const suggestedStatuses = sanitizeStatuses(
+						Object.fromEntries(
+							analysis.iu_suggestions
+								.filter((item) => isAssessmentStatus(item.suggested_status))
+								.map((item) => [item.iu_id, item.suggested_status as AssessmentStatus]),
+						),
+					);
+					setStatuses(
+						draft?.statuses ? sanitizeStatuses(draft.statuses) : suggestedStatuses,
+					);
 					setChangedIds(draft?.changedIds ?? []);
 					setDraftSaved(Boolean(draft?.applied));
 				}
@@ -136,9 +150,9 @@ export default function SesiNilaiScreen() {
 	};
 
 	const assessmentItems = (): AssessmentItemIn[] => (story?.ius ?? []).map((iu) => ({
-			 iu_id: iu.id,
-			 status: statuses[iu.id] ?? "unclear",
-			 evidence_note: suggestions[iu.id]?.evidence_quote ?? undefined,
+		iu_id: iu.id,
+		status: toBinaryStatus(statuses[iu.id] ?? "not_met"),
+		evidence_note: suggestions[iu.id]?.evidence_quote ?? undefined,
 	}));
 
 	const saveDraft = async () => {
@@ -170,9 +184,13 @@ export default function SesiNilaiScreen() {
 		setError(null);
 		try {
 			await api.applyIuSuggestions(token, numericSessionId);
-			const next = Object.fromEntries(Object.values(suggestions)
-				.filter((item) => isAssessmentStatus(item.suggested_status))
-				.map((item) => [item.iu_id, item.suggested_status as AssessmentStatus]));
+			const next = sanitizeStatuses(
+				Object.fromEntries(
+					Object.values(suggestions)
+						.filter((item) => isAssessmentStatus(item.suggested_status))
+						.map((item) => [item.iu_id, item.suggested_status as AssessmentStatus]),
+				),
+			);
 			setStatuses(next);
 			setChangedIds([]);
 			await AsyncStorage.setItem(`@labi/assessment/${numericSessionId}`, JSON.stringify({ statuses: next, changedIds: [], applied: true }));
@@ -186,9 +204,10 @@ export default function SesiNilaiScreen() {
 
 	const complete = async () => {
 		if (!token || !story || saving || !Number.isFinite(numericSessionId)) return;
+		// Semua item dijamin biner (met/not_met): saran unclear di-fallback
+		// saat dimuat, jadi kunci langsung kirim PUT lalu complete.
 		setSaving(true);
 		setError(null);
-		setHighlightedIds([]);
 		try {
 			if (!draftSaved) {
 				await api.putAssessment(token, numericSessionId, assessmentItems());
@@ -198,13 +217,7 @@ export default function SesiNilaiScreen() {
 			successHaptic();
 			router.replace({ pathname: "/sesi-hasil", params: { sessionId: String(numericSessionId) } });
 		} catch (err) {
-			if (err instanceof api.ApiError && err.status === 422) {
-				const unresolved = story.ius.filter((iu) => !statuses[iu.id] || statuses[iu.id] === "unclear").map((iu) => iu.id);
-				setHighlightedIds(unresolved);
-				setError("Masih ada bagian yang belum jelas. Periksa bagian yang ditandai, lalu simpan lagi.");
-				const firstOffset = itemOffsets.current[unresolved[0]];
-				if (typeof firstOffset === "number") scrollRef.current?.scrollTo({ y: firstOffset, animated: true });
-			} else setError(api.errorMessage(err));
+			setError(api.errorMessage(err));
 		} finally {
 			setSaving(false);
 		}
@@ -216,25 +229,14 @@ export default function SesiNilaiScreen() {
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-			<View style={styles.header}>
-				<Pressable
-					accessibilityRole="button"
-					accessibilityLabel="Kembali"
-					onPress={() => router.back()}
-					style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-				>
-					<Icon name="chevron" size={22} color={colors.textPrimary} />
-				</Pressable>
-				<Text style={[type.h2, styles.headerTitle]}>Nilai cerita</Text>
-			</View>
+			<AppHeader title="Nilai cerita" onBack={() => router.back()} />
 
 			<ScrollView
-				ref={scrollRef}
 				contentContainerStyle={styles.content}
 				showsVerticalScrollIndicator={false}
 			>
 				<Text style={[type.body, styles.intro]}>
-				Periksa bersama bagian cerita yang sudah diingat. Saran ini bisa diubah kapan saja.
+					Periksa bersama bagian cerita yang sudah diingat. Saran ini bisa diubah kapan saja.
 				</Text>
 
 				{transcript ? (
@@ -259,16 +261,19 @@ export default function SesiNilaiScreen() {
 
 				{story
 					? story.ius.map((iu) => {
-							const selected = statuses[iu.id];
-							return (
-								<View
-									key={iu.id}
-									onLayout={(event) => { itemOffsets.current[iu.id] = event.nativeEvent.layout.y; }}
-								>
-								<Card style={[styles.iuCard, highlightedIds.includes(iu.id) && styles.iuCardHighlighted]}>
+						const selected = toBinaryStatus(statuses[iu.id] ?? "not_met");
+						const aiUnsure = suggestions[iu.id]?.suggested_status === "unclear";
+						return (
+							<View key={iu.id}>
+								<Card style={styles.iuCard}>
 									<Text style={[type.bodyStrong, styles.iuTitle]}>
 										{iu.description}
 									</Text>
+									{aiUnsure && !changedIds.includes(iu.id) ? (
+										<View style={styles.unsureRow}>
+											<StatusChip tone="watch" label="AI ragu-ragu, silakan cek" />
+										</View>
+									) : null}
 									{suggestions[iu.id] && !changedIds.includes(iu.id) ? (
 										<Text style={[type.small, styles.suggestionLabel]}>Saran otomatis</Text>
 									) : null}
@@ -305,9 +310,9 @@ export default function SesiNilaiScreen() {
 										})}
 									</View>
 								</Card>
-								</View>
-							);
-						})
+							</View>
+						);
+					})
 					: null}
 			</ScrollView>
 
@@ -322,6 +327,7 @@ export default function SesiNilaiScreen() {
 						style={styles.suggestionButton}
 					/>
 				) : null}
+
 				<Button
 					label={saving ? "Menyimpan…" : "Simpan perubahan"}
 					fullWidth
@@ -329,9 +335,9 @@ export default function SesiNilaiScreen() {
 					disabled={story === null || saving}
 					onPress={saveDraft}
 				/>
+
 				<Button
 					label="Kunci sesi"
-					size="large"
 					fullWidth
 					loading={saving}
 					disabled={story === null || saving}
@@ -346,27 +352,6 @@ const styles = StyleSheet.create({
 	safe: {
 		flex: 1,
 		backgroundColor: colors.background,
-	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 12,
-		paddingHorizontal: layout.screenPadding,
-		paddingTop: spacing.sm,
-		paddingBottom: spacing.sm,
-	},
-	back: {
-		width: 48,
-		height: 48,
-		borderRadius: 24,
-		backgroundColor: colors.surface,
-		alignItems: "center",
-		justifyContent: "center",
-		transform: [{ scaleX: -1 }],
-		...shadows.pill,
-	},
-	headerTitle: {
-		color: colors.textPrimary,
 	},
 	content: {
 		paddingHorizontal: layout.screenPadding,
@@ -386,9 +371,9 @@ const styles = StyleSheet.create({
 	iuCard: {
 		marginBottom: 12,
 	},
-	iuCardHighlighted: {
-		borderWidth: 2,
-		borderColor: colors.danger,
+	unsureRow: {
+		alignItems: "flex-start",
+		marginTop: 8,
 	},
 	iuTitle: {
 		color: colors.textPrimary,
@@ -441,10 +426,12 @@ const styles = StyleSheet.create({
 	},
 	footer: {
 		paddingHorizontal: layout.screenPadding,
+		paddingTop: spacing.md,
 		paddingBottom: spacing.md,
+		gap: 12,
 	},
 	suggestionButton: {
-		marginBottom: 10,
+		marginBottom: 0,
 	},
 	pressed: {
 		opacity: 0.7,

@@ -25,13 +25,59 @@ import {
 import * as api from "../../lib/api";
 import type { SessionHistoryItem } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
-import { DUMMY_TOPICS } from "../../lib/dummyData";
 import { formatName } from "../../lib/formatName";
+import { TOPIC_OPTIONS } from "../../lib/survivorOptions";
+import type { IconName } from "../../components/Icon";
 import {
 	formatSessionDate,
 	recallLabel,
 	recallTone,
 } from "../../lib/sessionDisplay";
+
+const TOPIC_PROMPTS: Record<string, string> = {
+	family: "Siapa yang terakhir datang berkunjung?",
+	hobbies: "Kegiatan apa yang paling disukai akhir-akhir ini?",
+	food: "Masakan apa yang paling disukai akhir-akhir ini?",
+	daily_activities: "Apa yang tadi dikerjakan setelah bangun tidur?",
+	memories: "Ada acara lama yang masih diingat?",
+	other: "Hal apa yang ingin diobrolkan hari ini?",
+};
+
+const TOPIC_ICONS: Record<string, IconName> = {
+	family: "heart",
+	hobbies: "sparkles",
+	food: "smile",
+	daily_activities: "clock",
+	memories: "book",
+	other: "session",
+};
+
+type TopicIdea = {
+	id: string;
+	title: string;
+	prompt: string;
+	icon: IconName;
+};
+
+function topicsFor(values: string[] | undefined): TopicIdea[] {
+	if (!values || values.length === 0) {
+		return [];
+	}
+	return values.flatMap((value) => {
+		const label = TOPIC_OPTIONS.find((option) => option.value === value)?.label;
+		if (!label) {
+			return [];
+		}
+		return [
+			{
+				id: value,
+				title: label,
+				prompt: TOPIC_PROMPTS[value] ?? "Apa yang ingin diobrolkan hari ini?",
+				icon: TOPIC_ICONS[value] ?? "sparkles",
+			},
+		];
+	});
+}
 
 const WEEKLY_TARGET = 4;
 const TONE_TO_BADGE = {
@@ -77,6 +123,7 @@ export default function SesiScreen() {
 		(session) => session.completed_at,
 	).length;
 	const progress = Math.min(doneCount / WEEKLY_TARGET, 1);
+	const topics = topicsFor(survivorProfile?.preferredTopics);
 
 	return (
 		<SafeAreaView style={styles.safe} edges={["top"]}>
@@ -201,12 +248,18 @@ export default function SesiScreen() {
 							Ide topik obrolan
 						</Text>
 						<Card>
-							{DUMMY_TOPICS.map((topic, index) => (
+							{topics.length === 0 ? (
+								<Text style={[type.small, styles.emptyText]}>
+									Lengkapi topik favorit di data penyintas untuk melihat
+									ide obrolan di sini.
+								</Text>
+							) : null}
+							{topics.map((topic, index) => (
 								<View
 									key={topic.id}
 									style={[
 										styles.topicRow,
-										index < DUMMY_TOPICS.length - 1 &&
+										index < topics.length - 1 &&
 											styles.topicDivider,
 									]}
 								>
@@ -247,7 +300,7 @@ const styles = StyleSheet.create({
 	content: {
 		paddingHorizontal: layout.screenPadding,
 		paddingTop: spacing.md,
-		paddingBottom: 88,
+		paddingBottom: 128,
 	},
 	pageTitle: {
 		color: colors.textPrimary,

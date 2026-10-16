@@ -14,25 +14,77 @@ import { Icon3D, type Icon3DName } from "../../components/icons/Icon3D";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { FadeIn } from "../../components/ui/FadeIn";
-import { Illustration } from "../../components/ui/Illustration";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Photo } from "../../components/photo/Photo";
 import { Mascot } from "../../components/mascot/Mascot";
 import { ProgressRing } from "../../components/ui/ProgressRing";
+import { TrendChart } from "../../components/ui/TrendChart";
 import {
 	colors,
 	layout,
 	spacing,
 	type,
+	type StatusTone,
 } from "../../constants/theme";
 import { useAuth } from "../../lib/auth";
-import { WEEKLY_PROGRESS, WEEKLY_SUMMARY } from "../../lib/dummyData";
 import { formatName } from "../../lib/formatName";
 import { getGreeting } from "../../lib/greeting";
 import { mascotForHome } from "../../lib/mascotMood";
 import * as api from "../../lib/api";
 import { clearActiveSession, getActiveSession } from "../../lib/activeSession";
+import { resolveParticipantId } from "../../lib/participant";
 import { sessionDestination } from "../../lib/sessionFlow";
+
+const WEEKLY_TARGET = 4;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+type WeeklySummary = {
+	title: string;
+	body: string;
+	status: string;
+	tone: StatusTone;
+};
+
+function buildWeeklySummary(
+	survivorName: string,
+	sessionCount: number,
+	latest: number | null,
+	baseline: number | null,
+): WeeklySummary {
+	if (sessionCount === 0 || latest === null) {
+		return {
+			title: "Belum ada sesi tercatat",
+			body: `Mulai sesi bercerita pertama bersama ${survivorName} untuk melihat perkembangannya di sini.`,
+			status: "Ayo mulai sesi pertama",
+			tone: "watch",
+		};
+	}
+	if (baseline !== null) {
+		const delta = latest - baseline;
+		if (delta > 3) {
+			return {
+				title: "Perubahan positif minggu ini",
+				body: `Dibanding awal, ${survivorName} mengingat bagian cerita lebih banyak. Terus dampingi dengan sabar.`,
+				status: "Semakin membaik",
+				tone: "stable",
+			};
+		}
+		if (delta < -3) {
+			return {
+				title: "Perlu sedikit perhatian",
+				body: `Ingatan ${survivorName} sedikit menurun dibanding awal. Coba sesi saat ia cukup istirahat.`,
+				status: "Perlu dicermati",
+				tone: "consult",
+			};
+		}
+	}
+	return {
+		title: "Stabil dan terjaga",
+		body: `Percakapan ${survivorName} minggu ini berjalan baik dan ingatannya cenderung stabil.`,
+		status: "Cenderung stabil",
+		tone: "watch",
+	};
+}
 
 type QuickAction = {
 	key: string;
@@ -134,7 +186,73 @@ function QuickTile({
 export default function HomeScreen() {
 	const { user, token, survivorProfile } = useAuth();
 	const [pendingSession, setPendingSession] = useState<{ sessionId: number; storyId: number } | null>(null);
+	const [weeklyDone, setWeeklyDone] = useState(0);
+	const [summary, setSummary] = useState<WeeklySummary>(() =>
+		buildWeeklySummary("orang yang kamu dampingi", 0, null, null),
+	);
+	const [trendValues, setTrendValues] = useState<number[]>([]);
+	const [chartWidth, setChartWidth] = useState(0);
 	const didResume = useRef(false);
+
+	useEffect(() => {
+		let active = true;
+		if (!token || !user) {
+			return;
+		}
+		(async () => {
+			try {
+				const participantId = await resolveParticipantId(token, user.id);
+				const sessions = await api.listSessions(
+					token,
+					participantId === null
+						? { page: 1, page_size: 50 }
+						: { participant_id: participantId, page: 1, page_size: 50 },
+				);
+				const completed = sessions.data.filter(
+					(session) => session.status === "completed" && session.completed_at,
+				);
+				const weekStart = Date.now() - WEEK_MS;
+				const weekly = completed.filter((session) => {
+					const time = new Date(session.completed_at as string).getTime();
+					return Number.isFinite(time) && time >= weekStart;
+				});
+				let latest: number | null = null;
+				let baseline: number | null = null;
+				let count = completed.length;
+				let values: number[] = [];
+				if (participantId !== null) {
+					const trend = await api
+						.getParticipantTrend(token, participantId)
+						.catch(() => null);
+					if (trend) {
+						count = trend.session_count;
+						latest = trend.latest?.iu_recall_percent ?? null;
+						baseline = trend.baseline?.iu_recall_percent ?? null;
+						values = (trend.series ?? []).map(
+							(point) => point.iu_recall_percent ?? 0,
+						);
+					}
+				}
+				if (active) {
+					setWeeklyDone(weekly.length);
+					setTrendValues(values);
+					setSummary(
+						buildWeeklySummary(
+							formatName(survivorProfile?.survivorNickname ?? "orang yang kamu dampingi"),
+							count,
+							latest,
+							baseline,
+						),
+					);
+				}
+			} catch {
+				// Ringkasan beranda gagal dimuat — biarkan tampilan default.
+			}
+		})();
+		return () => {
+			active = false;
+		};
+	}, [token, user, survivorProfile?.survivorNickname]);
 
 	useEffect(() => {
 		let active = true;
@@ -182,7 +300,8 @@ export default function HomeScreen() {
 		survivorProfile?.survivorNickname ?? "orang yang kamu dampingi",
 	);
 	const companionName = formatName(user?.name ?? "Pendamping");
-	const homeMascot = mascotForHome(WEEKLY_SUMMARY.tone);
+	const homeMascot = mascotForHome(summary.tone);
+	const remaining = Math.max(WEEKLY_TARGET - weeklyDone, 0);
 
 	const handleQuickAction = (action: QuickAction) => {
 		router.push(action.route);
@@ -250,14 +369,14 @@ export default function HomeScreen() {
 
 						<View style={styles.ringRow}>
 							<ProgressRing
-								progress={WEEKLY_PROGRESS.done / WEEKLY_PROGRESS.target}
+								progress={Math.min(weeklyDone / WEEKLY_TARGET, 1)}
 								size={124}
 							>
 								<Text style={[type.h1, styles.ringValue]}>
-									{WEEKLY_PROGRESS.done}
+									{weeklyDone}
 								</Text>
 								<Text style={[type.small, styles.ringLabel]}>
-									dari {WEEKLY_PROGRESS.target} sesi
+									dari {WEEKLY_TARGET} sesi
 								</Text>
 							</ProgressRing>
 							<View style={styles.ringSide}>
@@ -265,8 +384,11 @@ export default function HomeScreen() {
 									Sesi minggu ini
 								</Text>
 								<Text style={[type.body, styles.ringSideText]}>
-									{WEEKLY_PROGRESS.done} dari {WEEKLY_PROGRESS.target} sesi
-									selesai. Satu sesi lagi untuk mencapai target.
+									{remaining === 0
+										? "Target minggu ini tercapai. Pertahankan!"
+										: weeklyDone === 0
+											? "Belum ada sesi minggu ini. Mulai saat ia siap."
+											: `${weeklyDone} dari ${WEEKLY_TARGET} sesi selesai. ${remaining} sesi lagi untuk mencapai target.`}
 								</Text>
 							</View>
 						</View>
@@ -303,20 +425,33 @@ export default function HomeScreen() {
 						<Card>
 							<View style={styles.summaryBody}>
 								<Text style={[type.bodyStrong, styles.summaryTitle]}>
-									{WEEKLY_SUMMARY.title}
+									{summary.title}
 								</Text>
 								<Text style={[type.body, styles.summaryText]}>
-									{WEEKLY_SUMMARY.body}
+									{summary.body}
 								</Text>
 								<View style={styles.summaryStat}>
 									<Icon name="sparkles" size={14} color={colors.primary} />
 									<Text style={[type.small, styles.summaryStatText]}>
-										{WEEKLY_SUMMARY.status}
+										{summary.status}
 									</Text>
 								</View>
-							</View>
-							<View style={styles.summaryIllustration}>
-								<Illustration name="journey" size={136} />
+								{trendValues.length >= 2 ? (
+									<View
+										style={styles.summaryChart}
+										onLayout={(event) =>
+											setChartWidth(event.nativeEvent.layout.width)
+										}
+									>
+										{chartWidth > 0 ? (
+											<TrendChart
+												width={chartWidth}
+												values={trendValues}
+												height={140}
+											/>
+										) : null}
+									</View>
+								) : null}
 							</View>
 						</Card>
 					</View>
@@ -420,7 +555,7 @@ const styles = StyleSheet.create({
 	content: {
 		paddingHorizontal: layout.screenPadding,
 		paddingTop: 8,
-		paddingBottom: 88,
+		paddingBottom: 128,
 	},
 	heroCard: {
 		marginTop: 20,
@@ -436,9 +571,11 @@ const styles = StyleSheet.create({
 	},
 	heroTitle: {
 		color: colors.textPrimary,
+		textAlign: "center",
 	},
 	heroDescription: {
 		color: colors.textSecondary,
+		textAlign: "center",
 		marginTop: 6,
 	},
 	ringRow: {
@@ -476,10 +613,11 @@ const styles = StyleSheet.create({
 	quickGrid: {
 		flexDirection: "row",
 		flexWrap: "wrap",
+		justifyContent: "center",
 		gap: 14,
 	},
 	quickItem: {
-		width: "47.5%",
+		width: "47%",
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 10,
@@ -519,9 +657,8 @@ const styles = StyleSheet.create({
 		color: colors.primary,
 		fontWeight: "600",
 	},
-	summaryIllustration: {
-		alignItems: "center",
-		marginTop: 16,
+	summaryChart: {
+		marginTop: 14,
 	},
 	doctorCard: {
 		marginBottom: 12,

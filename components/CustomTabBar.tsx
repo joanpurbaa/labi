@@ -300,6 +300,7 @@ const styles = StyleSheet.create({
 	},
 	label: {
 		color: colors.textSecondary,
+		fontSize: 13,
 	},
 	labelActive: {
 		fontFamily: type.bodyStrong.fontFamily,
